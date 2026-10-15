@@ -1,5 +1,4 @@
-# Basura de SO y de editor. Amplíalo cuando se decida el stack (target/, dist/, bin/, obj/,
-# node_modules/, __pycache__/, …).
+# Basura de SO y de editor
 .DS_Store
 Thumbs.db
 desktop.ini
@@ -8,4 +7,12 @@ desktop.ini
 *.swp
 *.log
 
-# Los binarios compilados NO se committean: van a GitHub Releases.
+# Node
+node_modules/
+
+# Salida del build: es lo que se carga con "Load unpacked", se regenera con `npm run build`
+dist/
+
+# Caché del build (descargas de uAssets) y perfiles de Chromium de la verificación
+.cache/
+test/profiles/

@@ -1,0 +1,24 @@
+{
+  "name": "adblock",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Chrome MV3 ad blocker shell: AdGuard DNR rulesets + cosmetic CSS, YouTube scriptlets, Twitch worker hook",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "vendor": "node build.mjs --vendor",
+    "verify": "node test/verify.mjs",
+    "verify:generic": "node test/verify.mjs generic",
+    "verify:youtube": "node test/verify.mjs youtube",
+    "verify:twitch": "node test/verify.mjs twitch"
+  },
+  "devDependencies": {
+    "@adguard/dnr-rulesets": "5.0.20261013160024",
+    "@adguard/scriptlets": "2.5.1",
+    "esbuild": "0.28.2",
+    "playwright": "1.64.1"
+  }
+}
