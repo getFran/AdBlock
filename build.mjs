@@ -396,7 +396,7 @@ function writeManifest({ resources }) {
   const hostPatterns = (hosts) => hosts.map((h) => `https://*.${h}/*`);
   const manifest = {
     manifest_version: 3,
-    name: 'AdBlock',
+    name: 'getFran AdBlock',
     version: EXT_VERSION,
     description: `Ad blocking shell: AdGuard DNR rulesets ${PKG_VERSION}, cosmetic CSS, YouTube scriptlets, Twitch worker hook. Personal build, loaded unpacked.`,
     minimum_chrome_version: '128',

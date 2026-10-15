@@ -1,4 +1,4 @@
-# AdBlock — bloqueador de anuncios para Chrome (Twitch y YouTube)
+# getFran AdBlock — bloqueador de anuncios para Chrome (Twitch y YouTube)
 
 Extensión de Chrome (Manifest V3) que bloquea anuncios en cualquier web con las listas de AdGuard y
 trata aparte YouTube (poda del player response) y Twitch (intercambio de stream en el worker del
