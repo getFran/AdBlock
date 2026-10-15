@@ -29,6 +29,12 @@ npm run verify -- twitch --seconds=900 --twitch=auronplay,ibai   # vigila canale
 node test/twitch-playlists.mjs                                   # piezas puras del worker, sin navegador
 ```
 
+## Desactivar en un sitio
+
+Icono del perro en la barra → "Desactivar en <host>". Quita en ese host y sus subdominios los bloqueos
+de red, el CSS cosmético y los scripts de YouTube y Twitch, y recarga la pestaña. `getfran.dev` viene
+desactivado de fábrica porque una regla de AdGuard (`||umami.`) rompe el panel de Umami autoalojado.
+
 ## Estado (2026-10-15)
 
 - Genérico y YouTube: funcionando y verificados.

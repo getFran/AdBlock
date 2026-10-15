@@ -105,7 +105,30 @@ async function testGeneric({ context, sw }) {
   for (const m of matched) byRuleset[m.ruleset] = (byRuleset[m.ruleset] || 0) + 1;
   say(`DNR matches reported by the service worker: ${matched.length} (${Object.entries(byRuleset).map(([k, v]) => `${k}:${v}`).join(', ')})`);
   await page.close();
-  return { blocked: blocked.length, matched: matched.length };
+
+  // The per-site switch, on the site that broke on 2026-10-16: AdGuard Tracking Protection's `||umami.` rule blocks
+  // the Umami dashboard's own scripts. With getfran.dev switched off nothing on it may be blocked and no cosmetic
+  // sheet injected (the content scripts are not registered for it, and a DNR allowAllRequests rule covers its frames).
+  section('per-site switch: umami.getfran.dev');
+  const before = await sw.evaluate(() => globalThis.__adblock.getDisabledSites());
+  const probe = async (label) => {
+    const p = await context.newPage();
+    const b = watchBlocked(p);
+    await p.goto('https://umami.getfran.dev/login', { waitUntil: 'load', timeout: 60000 }).catch((e) => say(`  ${label}: ${e.message}`));
+    await sleep(4000);
+    const sheets = await p.evaluate(() => document.adoptedStyleSheets.length).catch(() => -1);
+    say(`  ${label}: ${b.length} requests blocked${b.length ? ' (e.g. ' + b.slice(0, 3).map((u) => u.replace(/^https?:\/\//, '').slice(0, 60)).join(' | ') + ')' : ''}, adoptedStyleSheets=${sheets}`);
+    await p.close();
+    return { blocked: b.length, sheets };
+  };
+  await sw.evaluate(() => globalThis.__adblock.setDisabledSites([]));
+  const on = await probe('with blocking on');
+  await sw.evaluate(() => globalThis.__adblock.setDisabledSites(['getfran.dev']));
+  const off = await probe('with getfran.dev switched off');
+  await sw.evaluate((sites) => globalThis.__adblock.setDisabledSites(sites), before);
+  const switchOk = on.blocked > 0 && off.blocked === 0 && off.sheets === 0;
+  say(`per-site switch: ${switchOk ? 'works (blocked with it on, nothing blocked and no cosmetic sheet with it off)' : 'NOT verified !!'}; list restored to ${JSON.stringify(before)}`);
+  return { blocked: blocked.length, matched: matched.length, switchOk };
 }
 
 // ---------------------------------------------------------------------------------------------------------

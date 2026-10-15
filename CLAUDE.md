@@ -57,6 +57,19 @@ alcance (carcasa que consume piezas mantenidas por otros), no con otro.
   `downloads`) en **`Descargas\AdBlock\twitch-<fecha>-<motivo>.json`**. Flujo: Fran dice a qué hora le
   saltó; la sesión lee el fichero más cercano en `C:\Users\javie\Downloads\AdBlock\`. Máximo uno
   automático por minuto; va como data URL, así que se recorta a 1,2 MB (límite de URL de Chrome).
+- **Interruptor por sitio** (2026-10-16, pedido por Fran tras quedarse Umami a medias). Popup de la
+  extensión (`src/popup/`): "Desactivar en <host>" guarda el host en `chrome.storage.local`
+  (`disabledSites`, sin `www.`, cubre subdominios) y el service worker lo aplica de dos formas: **los
+  content scripts ya no van en el manifest**, los registra `chrome.scripting.registerContentScripts`
+  (lista `CONTENT_SCRIPTS` de `build.mjs` inyectada en `background.js`) con `excludeMatches` de los sitios
+  desactivados, y por cada sitio una regla DNR dinámica `allowAllRequests` (id 1000+i, prioridad
+  10.000.000, `requestDomains`) que deja pasar todo lo de sus frames por encima de cualquier regla
+  estática. Al cambiar la lista se recarga la pestaña. **`getfran.dev` viene desactivado de fábrica**: la
+  Tracking Protection de AdGuard lleva `||umami.` sin condición de tercero y rompe el panel de Umami
+  autoalojado (memoria `adguard-tracking-protection-bloquea-cualquier-host-umami`); la lista no se toca,
+  se usa el interruptor. `npm run verify -- generic` lo comprueba sobre `umami.getfran.dev` (19 peticiones
+  bloqueadas con todo activo, 0 y sin hoja cosmética con el sitio desactivado). Permisos nuevos:
+  `scripting`, `storage`.
 - **Toolchain:** Node ≥ 22 (en la máquina hay 24) con esbuild. Fuente en `src/` en JavaScript
   plano; `build.mjs` genera `dist/` (ignorado en git). `npm run build` funciona desde un clon limpio
   con solo `npm install`: no descarga nada de la red.
@@ -80,7 +93,10 @@ build.mjs        lee build.config.mjs y escribe dist/:
   youtube.js     MAIN world: 31 reglas compiladas (27 del Base de AdGuard, 4 de uAssets)
   twitch.js      MAIN world: hook de Worker/fetch/XHR de la página con src/twitch/worker.js inlined (el bloqueo)
   twitch-bridge.js  ISOLATED: relé página -> service worker del registro (chrome.downloads -> Descargas\AdBlock\)
-  background.js  service worker de diagnóstico (rulesets habilitados, peticiones bloqueadas)
+  background.js  service worker: registra los content scripts (con los sitios desactivados excluidos), aplica las reglas
+                 allowAllRequests del interruptor, escribe los registros de Twitch y da diagnóstico a verify
+  popup.html/js  el interruptor por sitio
+  icons/         el perro con el gorro, en 16/32/48/128
   manifest.json
 ```
 
@@ -122,7 +138,7 @@ build.mjs        lee build.config.mjs y escribe dist/:
 |---|---|
 | `npm run build` | regenera `dist/` (≈1 s) |
 | `npm run vendor` | refresca `vendor/uassets-quick-fixes.txt` desde GitHub (commitéalo) |
-| `npm run verify -- generic\|youtube\|twitch\|all` | carga `dist/` en un Chromium con Playwright y comprueba en páginas reales |
+| `npm run verify -- generic\|youtube\|twitch\|all` | carga `dist/` en un Chromium con Playwright y comprueba en páginas reales (`generic` incluye el interruptor por sitio sobre umami.getfran.dev) |
 | `npm run verify -- twitch --seconds=900 --twitch=<canal>[,<canal>...]` | vigila cada canal hasta 900 s y para 30 s después del primer corte cosido completo; imprime por corte backups usados, URIs de anuncio en la red, parón más largo, UI de anuncio y si el vídeo sigue tras el corte |
 | `node test/twitch-playlists.mjs` | comprobaciones sin navegador de las piezas puras del worker sobre playlists sintéticas |
 

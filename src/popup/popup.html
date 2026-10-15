@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <title>getFran AdBlock</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --fg: #1b1b1b;
+        --muted: #6b6b6b;
+        --line: #dcdcdc;
+        --bg: #fff;
+        --accent: #1a73e8;
+        --off: #b3261e;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --fg: #e8e8e8;
+          --muted: #9a9a9a;
+          --line: #3a3a3a;
+          --bg: #202124;
+          --accent: #8ab4f8;
+          --off: #f28b82;
+        }
+      }
+      body {
+        margin: 0;
+        width: 300px;
+        font: 13px/1.4 system-ui, -apple-system, 'Segoe UI', sans-serif;
+        color: var(--fg);
+        background: var(--bg);
+      }
+      header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--line);
+      }
+      header img {
+        width: 24px;
+        height: 24px;
+        border-radius: 4px;
+      }
+      header strong {
+        font-size: 14px;
+      }
+      main {
+        padding: 12px;
+      }
+      .site {
+        font-weight: 600;
+        word-break: break-all;
+      }
+      .state {
+        color: var(--muted);
+        margin: 2px 0 10px;
+      }
+      .state.off {
+        color: var(--off);
+      }
+      button {
+        font: inherit;
+        padding: 6px 10px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: transparent;
+        color: var(--fg);
+        cursor: pointer;
+      }
+      button.primary {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      h2 {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--muted);
+        margin: 16px 0 6px;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+      }
+      ul {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      li {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 4px 0;
+        border-top: 1px solid var(--line);
+      }
+      li button {
+        padding: 2px 8px;
+      }
+      .empty {
+        color: var(--muted);
+      }
+      .note {
+        color: var(--muted);
+        font-size: 12px;
+        margin-top: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <img src="icons/icon-32.png" alt="" />
+      <strong>getFran AdBlock</strong>
+    </header>
+    <main>
+      <div id="current"></div>
+      <h2>Sitios desactivados</h2>
+      <ul id="list"></ul>
+      <p class="note">Desactivar un sitio quita en él los bloqueos de red, el CSS cosmético y los scripts de YouTube y Twitch. Incluye sus subdominios. La pestaña se recarga al cambiarlo.</p>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>

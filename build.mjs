@@ -400,8 +400,18 @@ function copyIcons() {
   for (const size of ICON_SIZES) fs.copyFileSync(path.join(ROOT, 'icons', `icon-${size}.png`), path.join(DIST, 'icons', `icon-${size}.png`));
 }
 
+const hostPatterns = (hosts) => hosts.map((h) => `https://*.${h}/*`);
+
+// The content scripts. Not declared in the manifest: the service worker registers them (chrome.scripting) with the
+// sites switched off in the popup excluded, which the manifest cannot express. Same fields as before, camel-cased.
+const CONTENT_SCRIPTS = [
+  { id: 'cosmetic', matches: ['http://*/*', 'https://*/*'], js: ['cosmetic/runtime.js'], runAt: 'document_start', allFrames: true, matchOriginAsFallback: true },
+  { id: 'youtube', matches: hostPatterns(config.youtube.hosts), js: ['youtube.js'], runAt: 'document_start', allFrames: true, world: 'MAIN' },
+  { id: 'twitch', matches: hostPatterns(config.twitch.hosts), js: ['twitch.js'], runAt: 'document_start', world: 'MAIN' },
+  { id: 'twitch-bridge', matches: hostPatterns(config.twitch.hosts), js: ['twitch-bridge.js'], runAt: 'document_start' },
+];
+
 function writeManifest({ resources }) {
-  const hostPatterns = (hosts) => hosts.map((h) => `https://*.${h}/*`);
   const manifest = {
     manifest_version: 3,
     name: 'getFran AdBlock',
@@ -409,17 +419,12 @@ function writeManifest({ resources }) {
     description: `Ad blocking shell: AdGuard DNR rulesets ${PKG_VERSION}, cosmetic CSS, YouTube scriptlets, Twitch worker hook. Personal build, loaded unpacked.`,
     minimum_chrome_version: '128',
     icons: Object.fromEntries(ICON_SIZES.map((size) => [size, `icons/icon-${size}.png`])),
-    // downloads: the Twitch records written to Downloads/AdBlock/ (src/background.js)
-    permissions: ['declarativeNetRequest', 'declarativeNetRequestFeedback', 'downloads'],
+    // scripting + storage: the content scripts and the per-site switch; downloads: the Twitch records (src/background.js)
+    permissions: ['declarativeNetRequest', 'declarativeNetRequestFeedback', 'scripting', 'storage', 'downloads'],
     host_permissions: ['<all_urls>'],
     background: { service_worker: 'background.js' },
     declarative_net_request: { rule_resources: resources },
-    content_scripts: [
-      { matches: ['http://*/*', 'https://*/*'], js: ['cosmetic/runtime.js'], run_at: 'document_start', all_frames: true, match_origin_as_fallback: true },
-      { matches: hostPatterns(config.youtube.hosts), js: ['youtube.js'], run_at: 'document_start', all_frames: true, world: 'MAIN' },
-      { matches: hostPatterns(config.twitch.hosts), js: ['twitch.js'], run_at: 'document_start', world: 'MAIN' },
-      { matches: hostPatterns(config.twitch.hosts), js: ['twitch-bridge.js'], run_at: 'document_start' },
-    ],
+    action: { default_popup: 'popup.html', default_title: 'getFran AdBlock', default_icon: Object.fromEntries(ICON_SIZES.map((size) => [size, `icons/icon-${size}.png`])) },
     // the cosmetic runtime fetches its domain's bucket from the extension package
     web_accessible_resources: [{ resources: ['cosmetic/bucket-*.json'], matches: ['<all_urls>'] }],
   };
@@ -449,7 +454,9 @@ async function main() {
   const resources = buildRulesets();
   buildCosmetic();
   buildYoutube();
-  await bundle('src/background.js', 'background.js', { format: 'esm' });
+  await bundle('src/background.js', 'background.js', { format: 'esm', define: { __CONTENT_SCRIPTS__: JSON.stringify(CONTENT_SCRIPTS) } });
+  await bundle('src/popup/popup.js', 'popup.js');
+  fs.copyFileSync(path.join(ROOT, 'src', 'popup', 'popup.html'), path.join(DIST, 'popup.html'));
   await bundle('src/cosmetic/runtime.js', 'cosmetic/runtime.js');
   await bundle('src/youtube/main.js', 'youtube.js');
   await buildTwitch();
