@@ -14,6 +14,7 @@ alcance (carcasa que consume piezas mantenidas por otros), no con otro.
 | | |
 |---|---|
 | Nombre en Chrome | **getFran AdBlock** (el `name` del manifest; pedido el 2026-10-15) |
+| Icono | `icons/dogwifhatnike.png` (elección de Fran, 2026-10-15); los `icons/icon-{16,32,48,128}.png` están renderizados y commiteados, el build solo los copia. Para cambiarlo, regenerar los cuatro tamaños (recorte cuadrado centrado) y commitearlos |
 | Repo | `getFran/AdBlock` (privado — **debe seguirlo**) |
 | Rama | `main` |
 | Despliegue | **ninguno**: `npm run build` deja `dist/`, que se carga con "Load unpacked" |

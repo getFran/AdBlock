@@ -392,6 +392,14 @@ async function buildTwitch() {
   log(`twitch: worker hook ${code.length} bytes inlined into twitch.js`);
 }
 
+// The extension's icon: icons/dogwifhatnike.png (Fran's pick, 2026-10-15) rendered once to the four sizes Chrome
+// uses (icons/icon-<size>.png, committed); the build only copies them.
+const ICON_SIZES = [16, 32, 48, 128];
+function copyIcons() {
+  fs.mkdirSync(path.join(DIST, 'icons'), { recursive: true });
+  for (const size of ICON_SIZES) fs.copyFileSync(path.join(ROOT, 'icons', `icon-${size}.png`), path.join(DIST, 'icons', `icon-${size}.png`));
+}
+
 function writeManifest({ resources }) {
   const hostPatterns = (hosts) => hosts.map((h) => `https://*.${h}/*`);
   const manifest = {
@@ -400,6 +408,7 @@ function writeManifest({ resources }) {
     version: EXT_VERSION,
     description: `Ad blocking shell: AdGuard DNR rulesets ${PKG_VERSION}, cosmetic CSS, YouTube scriptlets, Twitch worker hook. Personal build, loaded unpacked.`,
     minimum_chrome_version: '128',
+    icons: Object.fromEntries(ICON_SIZES.map((size) => [size, `icons/icon-${size}.png`])),
     // downloads: the Twitch records written to Downloads/AdBlock/ (src/background.js)
     permissions: ['declarativeNetRequest', 'declarativeNetRequestFeedback', 'downloads'],
     host_permissions: ['<all_urls>'],
@@ -444,6 +453,7 @@ async function main() {
   await bundle('src/cosmetic/runtime.js', 'cosmetic/runtime.js');
   await bundle('src/youtube/main.js', 'youtube.js');
   await buildTwitch();
+  copyIcons();
   writeManifest({ resources });
 
   const size = (f) => Math.round(fs.statSync(path.join(DIST, f)).size / 1024) + ' KB';
