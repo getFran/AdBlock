@@ -46,6 +46,15 @@ alcance (carcasa que consume piezas mantenidas por otros), no con otro.
   Purple, el master `picture-by-picture` que pide la página se responde vacío y dispara el prewarm de
   tokens; los tokens también se piden al cargar el canal. Sin UI ni ajustes: los valores son los
   defaults de Purple del 2026-10-10. No portado: `forcePopoutToken`, `reloadAfterAd`, la whitelist.
+- **Registro automático para revisar un anuncio a posteriori** (2026-10-15, noche). Fran no copia nada
+  de la consola: `page.js` muestrea cada segundo el vídeo y la UI de anuncio de Twitch y, 20 s después
+  de acabar un corte cosido, cuando esa UI lleva 3 s visible, o a mano (`window.__adblockTwitch.save()`),
+  construye un JSON (muestras, eventos, log, estado del worker y sus últimas 80 playlists: las del
+  player, las de los backups y lo entregado) y lo manda por `twitch-bridge.js` (mundo aislado, el único
+  con `chrome.runtime` en twitch.tv) al service worker, que lo escribe con `chrome.downloads` (permiso
+  `downloads`) en **`Descargas\AdBlock\twitch-<fecha>-<motivo>.json`**. Flujo: Fran dice a qué hora le
+  saltó; la sesión lee el fichero más cercano en `C:\Users\javie\Downloads\AdBlock\`. Máximo uno
+  automático por minuto; va como data URL, así que se recorta a 1,2 MB (límite de URL de Chrome).
 - **Toolchain:** Node ≥ 22 (en la máquina hay 24) con esbuild. Fuente en `src/` en JavaScript
   plano; `build.mjs` genera `dist/` (ignorado en git). `npm run build` funciona desde un clon limpio
   con solo `npm install`: no descarga nada de la red.
@@ -68,6 +77,7 @@ build.mjs        lee build.config.mjs y escribe dist/:
   cosmetic/      runtime.js (selectores genéricos + runtime) y bucket-N.json (por dominio)
   youtube.js     MAIN world: 31 reglas compiladas (27 del Base de AdGuard, 4 de uAssets)
   twitch.js      MAIN world: hook de Worker/fetch/XHR de la página con src/twitch/worker.js inlined (el bloqueo)
+  twitch-bridge.js  ISOLATED: relé página -> service worker del registro (chrome.downloads -> Descargas\AdBlock\)
   background.js  service worker de diagnóstico (rulesets habilitados, peticiones bloqueadas)
   manifest.json
 ```
@@ -98,7 +108,8 @@ build.mjs        lee build.config.mjs y escribe dist/:
   anuncio arranca igual). Las peticiones GQL las ejecuta la página con su `fetch` original y sus
   cabeceras (`Client-Integrity`, `X-Device-Id`, `Authorization`…). Evidencia: consola bajo
   `[AdBlock/twitch]` (página) y `[AdBlock/twitch:worker]`, y `window.__adblockTwitch` (`breaks`,
-  `breakEnds`, `events`, `blankUris`, `csaiBlocked`, `restarts`, `log`). Las piezas puras (detector,
+  `breakEnds`, `events`, `blankUris`, `csaiBlocked`, `restarts`, `samples`, `saves`, `log`), y el registro
+  JSON que cae en `Descargas\AdBlock\` tras un corte o al verse la UI de anuncio. Las piezas puras (detector,
   merge, blank, secuencia, variantes) se exportan en `self.__adblockTwitchWorker` para
   `test/twitch-playlists.mjs`. Dato de la sonda que decidió esto: memoria
   `twitch-sonda-corte-cosido-real-y-los-siete-backups-limpios`.

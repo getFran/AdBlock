@@ -38,8 +38,10 @@ node test/twitch-playlists.mjs                                   # piezas puras 
   intercambio aún no se ha visto en vivo** (2026-10-15: 2 h 20 min y 23 cargas sin corte cosido); el
   bloqueo del anuncio client-side sí (23 peticiones respondidas vacías, sin UI de anuncio ni parones).
 
-Cuando salte un anuncio con la extensión cargada: consola de la pestaña (F12), filtrar por
-`AdBlock/twitch`. Las líneas `AD BREAK`, `backups:`, `player <- backup ...` y `AD BREAK over` cuentan
-qué se sirvió; `window.__adblockTwitch.breakEnds` tiene el resumen por corte.
+Cuando salte un anuncio con la extensión cargada no hay que copiar nada: la extensión deja sola un
+`Descargas\AdBlock\twitch-<fecha>-<motivo>.json` (tras cada corte cosido y cuando la UI de anuncio de
+Twitch se queda visible; a mano, `window.__adblockTwitch.save()` en la consola). Basta decir la hora
+para que la siguiente sesión lo lea. Dentro van las muestras del vídeo, el log, los eventos y las
+últimas playlists del player y de los backups.
 
 > Repo privado y debe seguir siéndolo.

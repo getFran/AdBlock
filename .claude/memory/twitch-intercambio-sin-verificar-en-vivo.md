@@ -1,6 +1,6 @@
 ---
 name: twitch-intercambio-sin-verificar-en-vivo
-description: El intercambio de stream de Twitch (portado de Purple el 2026-10-15) está escrito, con checks unitarios y hook en producción, pero no se ha visto actuar en vivo; esa tarde 2 h 20 min sobre 23 cargas de canales grandes no trajeron ningún corte cosido (twitch-stitched-ad): todos los midrolls fueron client-side (twitch-maf-ad cada 4-5 min, edge.ads.twitch.tv respondido vacío) y los canales offline reproducen VOD con un preroll CSAI por XHR. Cómo cazar un corte la próxima vez y qué leer en la consola.
+description: El intercambio de stream de Twitch (portado de Purple el 2026-10-15) está escrito, con checks unitarios y hook en producción, pero no se ha visto actuar en vivo; esa tarde 2 h 20 min sobre 23 cargas de canales grandes no trajeron ningún corte cosido (twitch-stitched-ad): todos los midrolls fueron client-side (twitch-maf-ad cada 4-5 min, edge.ads.twitch.tv respondido vacío) y los canales offline reproducen VOD con un preroll CSAI por XHR. Cuando Fran diga que le saltó un anuncio, la evidencia está en Descargas\AdBlock\ (registro automático), no en su consola.
 metadata:
   type: project
 ---
@@ -35,10 +35,15 @@ sorprenderse de que una hora de canales grandes no traiga un corte: hoy Twitch m
 client-side y el cosido es raro desde este perfil.
 
 **How to apply:** para cazar uno, `npm run verify -- twitch --seconds=150 --twitch=<10-20 canales>`
-(muchas cargas cortas) o, si Fran ve un corte real en su Chrome, pedirle la consola filtrada por
-`AdBlock/twitch`: `AD BREAK …` (el corte), `backups: site=clean@720p60 …` (qué devolvió cada tipo),
-`player <- backup …` (qué se sirvió y el desplazamiento de secuencia), `AD BREAK over …` (resumen) y
-`window.__adblockTwitch.breakEnds`. Si aparece `sequence back` o `video still … pause/play`, es el
-reinicio: no es un fallo, pero cuesta ~1 s. Relacionado:
+(muchas cargas cortas). Si Fran dice que le saltó un anuncio en su Chrome, **no pedirle la consola**:
+leer el `C:\Users\javie\Downloads\AdBlock\twitch-<fecha>-<motivo>.json` más cercano a esa hora
+(motivo `break` = corte cosido terminado, `ad-ui` = la UI de anuncio de Twitch estuvo 3 s visible,
+`manual`). Dentro: `breakEnds[]` (resumen por corte con `backups`, `swapped`, `blanked` y `playlists`,
+las playlists del player, de cada backup y lo entregado), `samples[]` (vídeo y UI de anuncio por
+segundo), `events[]`, `log[]` y `worker.recent`. En el log: `AD BREAK …` (el corte), `backups: site=clean@720p60 …`
+(qué devolvió cada tipo), `player <- backup …` (qué se sirvió y el desplazamiento de secuencia),
+`AD BREAK over …`; `sequence back` o `video still … pause/play` son el reinicio, no un fallo. Si no hay
+fichero, la UI de anuncio no coincidió con los selectores o no hubo corte cosido: pedirle que ejecute
+`window.__adblockTwitch.save()` en la consola y leer ese registro manual. Relacionado:
 [[twitch-sonda-corte-cosido-real-y-los-siete-backups-limpios]] (el dato de la mañana),
 [[twitch-ningun-player-type-garantiza-stream-sin-anuncios]].
