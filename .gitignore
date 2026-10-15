@@ -1,0 +1,11 @@
+# Basura de SO y de editor. Amplíalo cuando se decida el stack (target/, dist/, bin/, obj/,
+# node_modules/, __pycache__/, …).
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+*.swp
+*.log
+
+# Los binarios compilados NO se committean: van a GitHub Releases.

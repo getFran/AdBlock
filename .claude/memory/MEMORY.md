@@ -1,0 +1,3 @@
+- [Twitch: ningún player_type garantiza stream sin anuncios](twitch-ningun-player-type-garantiza-stream-sin-anuncios.md) — el token trae show_ads para site, embed y picture-by-picture; el pre-roll no se dispara con HLS a pelo, solo se ve desde el navegador real.
+- [YouTube: la poda no quita el backoff SABR](youtube-la-poda-client-side-no-quita-el-backoff-sabr.md) — anuncios client-side y podables, pero el buffering falso va firmado en la URL del vídeo y nadie lo quita; uAssets toca los filtros cada ~3 días.
+- [MV3: MAIN world + document_start llega antes que la página](mv3-main-world-document-start-se-inyecta-al-insertar-html.md) — se inyecta al insertar <html> si está registrado declarativamente; executeScript llega tarde y DNR no toca cuerpos.
