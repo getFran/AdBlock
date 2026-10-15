@@ -1088,10 +1088,10 @@
     if (!response.ok) return response;
     const text = await response.text();
     if (!text.startsWith('#EXTM3U')) return new Response(text, responseInit(response));
-    const current = state.playerVariants.get(withoutQuery(url));
-    if (current) state.quality = current.name;
     let out = text;
     try {
+      const current = state.playerVariants.get(withoutQuery(url));
+      if (current) state.quality = current.name;
       out = await onFetch(text, url);
     } catch (e) {
       // a failure in the blocking logic must not stop the player: it gets Twitch's playlist
@@ -1101,26 +1101,26 @@
     return new Response(out, responseInit(response));
   }
 
-  scope.fetch = async function (input, init) {
+  // The route is chosen here; the handlers run the original request themselves so that its own failures (an abort
+  // by the player, a network error) reach the player as they are, instead of being retried
+  scope.fetch = function (input, init) {
+    let route = null;
     let url = '';
     try {
       url = urlOf(input);
-    } catch {
-      url = '';
-    }
-    try {
       if (url && isBlankSegment(url)) {
         state.blankAnswered++;
         if (state.blankAnswered <= 5 || state.blankAnswered % 20 === 0) log('ad media answered with the blank segment (#' + state.blankAnswered + '): ' + url.slice(0, 100));
         emit('blankAnswered', { url });
-        return blankSegment();
+        return Promise.resolve(blankSegment());
       }
-      if (isUsher(url)) return await (isPbypUsher(url) ? onPbypMaster(input, init, url) : onChannelMaster(input, init, url));
-      if (isPlayerPlaylist(url)) return await onMediaPlaylist(input, init, url);
+      if (isUsher(url)) route = isPbypUsher(url) ? onPbypMaster : onChannelMaster;
+      else if (isPlayerPlaylist(url)) route = onMediaPlaylist;
     } catch (e) {
-      log('fetch hook failed, request passed through: ' + ((e && e.stack) || e));
+      log('fetch hook failed to route, request passed through: ' + ((e && e.stack) || e));
+      route = null;
     }
-    return request(input, init);
+    return route ? route(input, init, url) : request(input, init);
   };
 
   // the pure pieces, for test/twitch-playlists.mjs

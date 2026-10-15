@@ -34,7 +34,9 @@ node test/twitch-playlists.mjs                                   # piezas puras 
 - Genérico y YouTube: funcionando y verificados.
 - Twitch: bloqueo por intercambio de stream (site → popout → frontpage → mobile_web → embed → autoplay
   360p), blank segment para lo que ningún backup cubra, y `edge.ads.twitch.tv` respondido vacío. Un
-  corte cosido solo se verifica cuando Twitch lo mete: si la prueba no ve ninguno, lo dice.
+  corte cosido solo se verifica cuando Twitch lo mete: si la prueba no ve ninguno, lo dice. **El
+  intercambio aún no se ha visto en vivo** (2026-10-15: 2 h 20 min y 23 cargas sin corte cosido); el
+  bloqueo del anuncio client-side sí (23 peticiones respondidas vacías, sin UI de anuncio ni parones).
 
 Cuando salte un anuncio con la extensión cargada: consola de la pestaña (F12), filtrar por
 `AdBlock/twitch`. Las líneas `AD BREAK`, `backups:`, `player <- backup ...` y `AD BREAK over` cuentan

@@ -124,8 +124,9 @@ que no ve anuncio lo dice tal cual: en YouTube la prueba que vale es que el play
 sin `adPlacements` (sin la extensión trae 1), no "no vi anuncio".
 
 **Un corte cosido no se puede provocar:** sale cuando Twitch lo mete (en `auronplay` tardó 5 min el
-2026-10-15). Si en la pasada no sale ninguno, el bloqueo **no está verificado** y la prueba lo dice
-tal cual; hay que repetir con otros canales grandes (`--twitch=a,b,c`).
+2026-10-15 por la mañana; esa misma tarde, 2 h 20 min y 23 cargas sin ninguno, memoria
+`twitch-intercambio-sin-verificar-en-vivo`). Si en la pasada no sale ninguno, el bloqueo **no está
+verificado** y la prueba lo dice tal cual; hay que repetir con otros canales grandes (`--twitch=a,b,c`).
 
 **Al limpiar navegadores de prueba colgados, nunca `taskkill //IM chrome.exe`:** mata el Chrome de
 Fran (memoria `no-matar-chrome-por-nombre-de-imagen` en `PyCharm Projects`).
