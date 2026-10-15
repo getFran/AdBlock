@@ -1,18 +1,39 @@
-// Twitch probe, worker side. This file is bundled first and prepended by src/twitch/page.js to the player's
-// own worker script, so it runs in the player worker before Twitch's code.
+// Twitch ad blocking, worker side. This file is bundled first and prepended by src/twitch/page.js to the player's
+// own worker script, so it runs in the player worker before Twitch's code and owns its `fetch`.
 //
 // Ported from Purple Ads Blocker by Arthur Bolsoni, https://github.com/arthurbolsoni/Purple-adblock
-// (Apache License 2.0): serviceWorker/src/bootstrap.ts (keep the original fetch, wrap self.fetch),
-// modules/player/ad-detector.ts (the ad markers: DATERANGE CLASS twitch-stitched-ad, ID stitched-ad-*,
-// segment titles other than "live"), modules/twitch/twitch.service.ts (PlaybackAccessToken with the public
-// client id and the usher URL built from the page's own), modules/twitch/page-gql.ts (GQL through the page).
+// (Apache License 2.0), serviceWorker/src/ as of 2026-10-10:
+//   bootstrap.ts, app.controller.ts      the fetch routes: blank URIs, the usher masters, the player's media playlists
+//   modules/player/player.ts             stream swap (E4), pinned and contaminated types (F-10), prewarm at the channel
+//                                        load and at the page's picture-by-picture request (F-19, F-22), backup sequence
+//                                        numbers (F-23), restart when the numbers go back (F-24), backups behind (F-25),
+//                                        the backup types asked together (F-26), blank URIs (F-14)
+//   modules/player/ad-detector.ts        the ad markers and the three signals of a stitched break (T-203)
+//   modules/player/segments.ts           segments read from the playlist lines
+//   modules/player/m3u8.ts               merge by PROGRAM-DATE-TIME (F-13), blankAds (F-14), stripAdDateranges (F-20)
+//   modules/player/sequence.ts           MEDIA-SEQUENCE against date-time
+//   modules/player/blank-segment.ts      BLANK_MP4, from TwitchAdSolutions (MIT, notice below)
+//   modules/player/ad-break.ts           the break state machine
+//   modules/stream/master.ts, stream.types.ts   variants of a master, picked by quality and codec family (F-11)
+//   modules/twitch/twitch.service.ts, page-gql.ts   PlaybackAccessToken through the page, the usher URL (F-08)
+// and its findings docs/findings/2026-10-08-backup-behind.md, -blank-segments.md, -prewarm-backups.md,
+// 2026-10-09-sequence-numbering.md, -preroll-numbering.md, -prewarm-at-load.md.
 //
-// This is a PROBE, not a blocker: playlists reach the player untouched. It
-//   - logs the master playlists the player loads (channel, player_type and ad flags of the token),
-//   - logs every #EXT-X-DATERANGE CLASS the first time it is seen, and the ad roll type when present,
-//   - when a playlist carries twitch-stitched-ad, requests the same stream with every backup player_type
-//     in parallel and classifies each answer: clean, announced (marker over live segments), ads, or error.
-// The results go to the page (window.__adblockTwitch.probes) and to the console.
+// Purple's settings are fixed at its defaults of 2026-10-10 (docs/feat.md) except the backup order, which is the one
+// decided for this project on 2026-10-15: site, popout, frontpage, mobile_web, embed, then autoplay (platform android,
+// 360p) as the last resort. Not in the chain: picture-by-picture (360p only). Not ported: pause/play at the break
+// edges (Purple's pausePlayOnBreaks, off by default), the reload after a break (reloadAfterAd, off), the popout token
+// for the page's own request (forcePopoutToken) and the whitelist. No settings, no UI.
+//
+// What reaches the player:
+//   - outside a break, every playlist as Twitch sent it (a break announced past the last segment loses only the
+//     prefetch lines that point at its first ad segments, and those URIs are answered blank);
+//   - on a poll with ad segments, the playlist of the first clean backup of the player's quality, its MEDIA-SEQUENCE
+//     aligned to the page's numbering; the type that worked goes first next time, a type that came with ads or with
+//     its own break announced is left out for 5 s;
+//   - with no clean backup, the page's playlist with each ad segment replaced by the backup segment at the same
+//     date-time, and the ones left listed as they are but answered with the blank segment when the player asks.
+// Diagnostics: console under [AdBlock/twitch:worker], and window.__adblockTwitch on the page (events, breaks, log).
 
 (function (scope) {
   if (scope.__adblockHooked) return;
@@ -21,31 +42,92 @@
   const TAG = '[AdBlock/twitch:worker]';
   const request = scope.fetch.bind(scope);
   const CLIENT_ID = 'kimne78kx3ncx6brgo4mv6wki5h1ko';
+  const GQL_URL = 'https://gql.twitch.tv/gql#origin=twilight';
   // persisted query hash and template as used by Brave's vaft scriptlet and Purple (docs/server/tokens.md)
   const PLAYBACK_ACCESS_TOKEN_HASH = 'ed230aa1e33e07eebb8928504583da78a5173989fadfb1ac94be06a04f3cdbe9';
   const PLAYBACK_ACCESS_TOKEN_QUERY =
     'query PlaybackAccessToken_Template($login: String!, $isLive: Boolean!, $vodID: ID!, $isVod: Boolean!, $playerType: String!, $platform: String!) { streamPlaybackAccessToken(channelName: $login, params: {platform: $platform, playerBackend: "mediaplayer", playerType: $playerType}) @include(if: $isLive) { value signature __typename } videoPlaybackAccessToken(id: $vodID, params: {platform: $platform, playerBackend: "mediaplayer", playerType: $playerType}) @include(if: $isVod) { value signature __typename }}';
-  const PROBE_TYPES = [
-    { playerType: 'embed', platform: 'web' },
-    { playerType: 'popout', platform: 'web' },
-    { playerType: 'autoplay', platform: 'android' }, // 360p stream, the "low quality fallback" of vaft/Purple
-    { playerType: 'picture-by-picture', platform: 'web' },
-    { playerType: 'frontpage', platform: 'web' },
-    { playerType: 'mobile_web', platform: 'web' },
-    { playerType: 'site', platform: 'web' },
-  ];
-  const PROBE_COOLDOWN_MS = 60000;
+
+  // F-09, this project's order: the types that gave the player's quality in the probe of 2026-10-15 first
+  const BACKUP_TYPES = ['site', 'popout', 'frontpage', 'mobile_web', 'embed'];
+  const LOW_QUALITY_TYPE = 'autoplay'; // 360p, requested with platform android; never pinned
+  const platformOf = (type) => (type === LOW_QUALITY_TYPE ? 'android' : 'web');
+  const CONTAMINATED_MS = 5000; // F-10: a type whose backup had ads (or its own break announced) is skipped this long
+  const BLANK_TTL_MS = 120000; // F-14: an ad URI is answered blank this long after the last poll that listed it
+  const PREWARM_MS = 60000; // F-19: at most one prewarm per this many ms
+  const RECOVERING_MS = 10000; // ad-break.ts: clean polls this long after a break bring the state back to idle
   const PAGE_GQL_TIMEOUT_MS = 5000;
+  const MAIN_SOURCE = 'page';
+  const SEQUENCE_TOLERANCE = 0.05; // sequence.ts: PROGRAM-DATE-TIME jitter, in segments
+
+  // --- blank segment (F-14) --------------------------------------------------------------------------
+  // BLANK_MP4 is copied verbatim from TwitchAdSolutions' vaft script, vaft/vaft-ublock-origin.js (hookWorkerFetch,
+  // `BLANK_MP4`), by way of Purple's blank-segment.ts:
+  //   by ryanbr, the maintained fork: https://github.com/ryanbr/TwitchAdSolutions/blob/74f1248f22a61fcbb559882f93cb60ca25b414e8/vaft/vaft-ublock-origin.js
+  //   by pixeltris, the original project: https://github.com/pixeltris/TwitchAdSolutions
+  // It is an fMP4 init segment only (ftyp + moov with an mp4a and an avc1 track, no samples): the player gets a valid
+  // file with nothing to play instead of the ad.
+  //
+  // MIT License (TwitchAdSolutions: pixeltris/TwitchAdSolutions and its fork ryanbr/TwitchAdSolutions)
+  // Copyright (c) 2020-present TwitchAdSolutions Contributors
+  // Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+  // documentation files (the "Software"), to deal in the Software without restriction, including without limitation
+  // the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and
+  // to permit persons to whom the Software is furnished to do so, subject to the following conditions: The above
+  // copyright notice and this permission notice shall be included in all copies or substantial portions of the
+  // Software. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT
+  // LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+  // SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+  // OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+  // DEALINGS IN THE SOFTWARE.
+  const BLANK_MP4 =
+    'AAAAKGZ0eXBtcDQyAAAAAWlzb21tcDQyZGFzaGF2YzFpc282aGxzZgAABEltb292AAAAbG12aGQAAAAAAAAAAAAAAAAAAYagAAAA' +
+    'AAABAAABAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' +
+    'AAAAAAADAAABqHRyYWsAAABcdGtoZAAAAAMAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAQAAAAAAAAAAAAAA' +
+    'AAAAAAEAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAURtZGlhAAAAIG1kaGQAAAAAAAAAAAAAAAAAALuAAAAAAFXEAAAAAAAt' +
+    'aGRscgAAAAAAAAAAc291bgAAAAAAAAAAAAAAAFNvdW5kSGFuZGxlcgAAAADvbWluZgAAABBzbWhkAAAAAAAAAAAAAAAkZGluZgAA' +
+    'ABxkcmVmAAAAAAAAAAEAAAAMdXJsIAAAAAEAAACzc3RibAAAAGdzdHNkAAAAAAAAAAEAAABXbXA0YQAAAAAAAAABAAAAAAAAAAAA' +
+    'AgAQAAAAALuAAAAAAAAzZXNkcwAAAAADgICAIgABAASAgIAUQBUAAAAAAAAAAAAAAAWAgIACEZAGgICAAQIAAAAQc3R0cwAAAAAA' +
+    'AAAAAAAAEHN0c2MAAAAAAAAAAAAAABRzdHN6AAAAAAAAAAAAAAAAAAAAEHN0Y28AAAAAAAAAAAAAAeV0cmFrAAAAXHRraGQAAAAD' +
+    'AAAAAAAAAAAAAAACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAoAA' +
+    'AAFoAAAAAAGBbWRpYQAAACBtZGhkAAAAAAAAAAAAAAAAAA9CQAAAAABVxAAAAAAALWhkbHIAAAAAAAAAAHZpZGUAAAAAAAAAAAAA' +
+    'AABWaWRlb0hhbmRsZXIAAAABLG1pbmYAAAAUdm1oZAAAAAEAAAAAAAAAAAAAACRkaW5mAAAAHGRyZWYAAAAAAAAAAQAAAAx1cmwg' +
+    'AAAAAQAAAOxzdGJsAAAAoHN0c2QAAAAAAAAAAQAAAJBhdmMxAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAoABaABIAAAASAAAAAAA' +
+    'AAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGP//AAAAOmF2Y0MBTUAe/+EAI2dNQB6WUoFAX/LgLUBAQFAAAD6A' +
+    'AA6mDgAAHoQAA9CW7y4KAQAEaOuPIAAAABBzdHRzAAAAAAAAAAAAAAAQc3RzYwAAAAAAAAAAAAAAFHN0c3oAAAAAAAAAAAAAAAAA' +
+    'AAAQc3RjbwAAAAAAAAAAAAAASG12ZXgAAAAgdHJleAAAAAAAAAABAAAAAQAAAC4AAAAAAoAAAAAAACB0cmV4AAAAAAAAAAIAAAAB' +
+    'AACCNQAAAAACQAAA';
+  let blankBytes = null;
+  // a new Response for each request (a body can be read once)
+  function blankSegment() {
+    if (!blankBytes) blankBytes = Uint8Array.from(atob(BLANK_MP4), (c) => c.charCodeAt(0));
+    return new Response(blankBytes.slice(), { headers: { 'Content-Type': 'video/mp4' } });
+  }
+
+  // --- state and messaging -----------------------------------------------------------------------------
 
   const state = {
     channel: null,
     usherUrl: null,
-    variants: [],
-    quality: null,
+    quality: null, // name of the variant the player polls (720p60...)
+    playerVariants: new Map(), // variant URL without query -> variant of the player's master
+    pbypVariants: new Set(), // variant URLs of the page's picture-by-picture masters: never the player's playlist
+    backups: new Map(), // playerType -> { variants, token, at }: the stored master of each backup type
+    pendingAccess: new Map(), // playerType -> token request in flight
+    pinnedType: null, // F-10: type of the last clean backup delivered
+    contaminatedUntil: new Map(), // F-10: type -> time until which it is skipped
+    blankUris: new Map(), // F-14: ad URI -> time of the last poll that listed it
+    lastPrewarm: -Infinity,
+    pageSequence: null, // F-23: newest live segment of the last page playlist without ads
+    sequenceShifts: new Map(), // F-23: backup variant URL -> shift, for the current break
+    source: MAIN_SOURCE, // F-24: where the playlist being built comes from
+    delivered: null, // F-24: { source, newest } of the last playlist given to the player
+    adState: 'idle', // ad-break.ts: idle | ad | recovering
+    endedAt: 0,
+    break: null, // accounting of the current break, posted to the page at its end
     seenClasses: new Set(),
     polls: 0,
-    lastProbeAt: 0,
-    probing: false,
+    blankAnswered: 0,
     gqlHeaders: {},
     gqlPending: new Map(),
     gqlNext: 1,
@@ -62,6 +144,7 @@
     console.log(TAG, ...args);
     post({ adblock: 'log', args: args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a))) });
   };
+  const emit = (type, data) => post({ adblock: 'event', event: { type, at: Date.now(), ...(data || {}) } });
 
   // messages from the page (only ours; the player's RPC uses other funcNames)
   scope.addEventListener('message', (event) => {
@@ -78,11 +161,12 @@
     }
   });
 
-  // --- helpers -------------------------------------------------------------------------------------
+  // --- helpers -----------------------------------------------------------------------------------------
 
   const urlOf = (input) => (typeof input === 'string' ? input : input instanceof URL ? input.href : input && input.url) || '';
+  const withoutQuery = (url) => url.split(/[?#]/)[0];
   const isUsher = (url) => /^https:\/\/usher\.ttvnw\.net\/api\/(v2\/)?channel\/hls\//.test(url);
-  const isPlaylist = (url) => /\.m3u8(\?|$)/.test(url) && !isUsher(url);
+  const isM3u8 = (url) => /\.m3u8(\?|$)/.test(url);
   const attr = (line, name) => {
     const at = line.indexOf(name + '="');
     if (at < 0) return '';
@@ -90,6 +174,7 @@
     return line.slice(start, line.indexOf('"', start));
   };
   const numberAttr = (line, name) => parseFloat((new RegExp('[:,]' + name + '=([0-9.]+)').exec(line) || [])[1] || '');
+  const uriAttr = (line) => (/URI="([^"]*)"/.exec(line) || [])[1] || null;
 
   function tokenFlags(token) {
     try {
@@ -108,7 +193,22 @@
     }
   }
 
-  // variants of a master playlist: EXT-X-MEDIA NAME of the variant's VIDEO group, else IVS-NAME / STABLE-VARIANT-ID
+  function channelFromUsher(url) {
+    try {
+      return decodeURIComponent(new URL(url).pathname.split('/').pop().replace(/\.m3u8$/, ''));
+    } catch {
+      return null;
+    }
+  }
+
+  const isPbypUsher = (url) => {
+    const token = tokenFromUsherUrl(url);
+    return token ? tokenFlags(token).player_type === 'picture-by-picture' : url.includes('picture-by-picture');
+  };
+
+  // --- master playlists: variants, picked by quality and codec family (master.ts, stream.types.ts) -------
+
+  // EXT-X-MEDIA NAME of the variant's VIDEO group (v1 masters), else IVS-NAME / STABLE-VARIANT-ID (the page's v2 master)
   function parseVariants(text) {
     const groups = {};
     const variants = [];
@@ -125,6 +225,7 @@
         variants.push({
           name: (group && groups[group]) || attr(line, 'IVS-NAME') || attr(line, 'STABLE-VARIANT-ID') || group || '?',
           resolution: (/RESOLUTION=(\d+x\d+)/.exec(line) || [])[1] || '',
+          codecs: attr(line, 'CODECS'),
           bandwidth: numberAttr(line, 'BANDWIDTH') || 0,
           url: uri,
         });
@@ -133,7 +234,443 @@
     return variants;
   }
 
-  // the usher URL of a backup: the page's own usher request with token, sig and p replaced (Purple F-08)
+  function codecFamily(codecs) {
+    for (const codec of String(codecs || '').split(',').map((c) => c.trim().toLowerCase())) {
+      if (codec.startsWith('avc1') || codec.startsWith('avc3')) return 'avc';
+      if (codec.startsWith('hvc1') || codec.startsWith('hev1')) return 'hevc';
+      if (codec.startsWith('av01')) return 'av1';
+    }
+    return '';
+  }
+  const qualityName = (quality) => String(quality || '').replace(/\s*\(source\)\s*$/i, '').trim();
+  const highest = (list) => list.reduce((best, x) => (!best || x.bandwidth > best.bandwidth ? x : best), undefined);
+
+  // F-11: same quality and codec family; else the same resolution, same family first; else the best of the family
+  function pickVariant(list, target) {
+    const family = codecFamily(target.codecs);
+    const quality = qualityName(target.quality);
+    const sameFamily = (x) => family !== '' && codecFamily(x.codecs) === family;
+    if (family) {
+      const same = highest(list.filter((x) => sameFamily(x) && quality !== '' && qualityName(x.name) === quality));
+      if (same) return same;
+    } else if (quality) {
+      const named = list.find((x) => qualityName(x.name) === quality);
+      if (named) return named;
+    }
+    if (target.resolution) {
+      const sameResolution = list.filter((x) => x.resolution === target.resolution);
+      const found = highest(sameResolution.filter(sameFamily)) || highest(sameResolution);
+      if (found) return found;
+    }
+    return highest(list.filter(sameFamily)) || highest(list);
+  }
+
+  // --- segments of a media playlist (segments.ts) -------------------------------------------------------
+
+  const EXTINF = /^#EXTINF:([^,]*),?(.*)$/;
+
+  // The tags between two URI lines belong to the segment of the second one; tags after the last URI belong to none.
+  // time: the segment's own PROGRAM-DATE-TIME in ms, or the previous segment's time plus its duration.
+  function readSegments(lines) {
+    const segments = [];
+    let extinf = -1;
+    let ownTime = null;
+    lines.forEach((raw, index) => {
+      const line = raw.trim();
+      if (line.startsWith('#EXT-X-PROGRAM-DATE-TIME:')) {
+        const time = Date.parse(line.slice('#EXT-X-PROGRAM-DATE-TIME:'.length));
+        ownTime = Number.isNaN(time) ? null : time;
+      } else if (line.startsWith('#EXTINF:')) {
+        extinf = index;
+      } else if (line && !line.startsWith('#')) {
+        const m = extinf >= 0 ? EXTINF.exec(lines[extinf].trim()) || [] : [];
+        const durationText = m[1] || '';
+        const title = (m[2] || '').trim();
+        const previous = segments[segments.length - 1];
+        const time = ownTime != null ? ownTime : previous && previous.time != null ? previous.time + previous.duration * 1000 : null;
+        segments.push({ extinf, uri: index, duration: parseFloat(durationText) || 0, durationText, title, time });
+        extinf = -1;
+        ownTime = null;
+      }
+    });
+    return segments;
+  }
+
+  // --- ad detection (ad-detector.ts): the only place that knows the ad markers --------------------------
+
+  const TITLE_MARKERS = ['stitched', 'Amazon', 'DCM,'];
+  const URI_MARKERS = ['/adsquared/', '/_404/', '/processing'];
+  const AD_CLASSES = ['twitch-stitched-ad', 'twitch-maf-ad'];
+  const AD_ATTRIBUTES = ['X-TV-TWITCH-AD-AD-SESSION-ID=', 'X-TV-TWITCH-AD-RADS-TOKEN='];
+
+  const isAdUri = (uri) => URI_MARKERS.some((marker) => uri.includes(marker));
+  const isAdSegment = (title, uri) => TITLE_MARKERS.some((marker) => title.includes(marker)) || isAdUri(uri);
+  const isStitchedMarker = (line) => line.startsWith('#EXT-X-DATERANGE:') && (attr(line, 'CLASS').startsWith('twitch-stitched') || attr(line, 'ID').startsWith('stitched-ad'));
+
+  // twitch-trigger alone is in every playlist (B-021): it counts only with an ad attribute
+  function isPlaylistMarker(line) {
+    if (line.startsWith('#EXT-X-CUE-OUT')) return true;
+    if (!line.startsWith('#EXT-X-DATERANGE:')) return false;
+    const cls = attr(line, 'CLASS');
+    return AD_CLASSES.includes(cls) || cls.startsWith('twitch-stitched') || attr(line, 'ID').startsWith('stitched-ad') || AD_ATTRIBUTES.some((a) => line.includes(a));
+  }
+
+  // T-203: in a playlist with a stitched-ad marker, a segment is an ad when its title is not "live", when a stitched-ad
+  // START-DATE + DURATION covers more than half of it, or when the twitch-stream-source in force at its time is not "live"
+  function stitchedBreak(lines) {
+    if (!lines.some(isStitchedMarker)) return null;
+    const ranges = [];
+    const sources = [];
+    for (const line of lines) {
+      if (!line.startsWith('#EXT-X-DATERANGE:')) continue;
+      const start = Date.parse(attr(line, 'START-DATE'));
+      if (Number.isNaN(start)) continue;
+      const duration = numberAttr(line, 'DURATION');
+      if (isStitchedMarker(line) && duration > 0) ranges.push({ start, end: start + duration * 1000 });
+      if (attr(line, 'CLASS') === 'twitch-stream-source') sources.push({ start, value: attr(line, 'X-TV-TWITCH-STREAM-SOURCE') });
+    }
+    sources.sort((a, b) => a.start - b.start);
+    return ({ title, time, duration }) => {
+      if (title && title !== 'live') return true;
+      if (time == null) return false;
+      const end = time + duration * 1000;
+      if (ranges.some((range) => Math.min(end, range.end) - Math.max(time, range.start) > (duration * 1000) / 2)) return true;
+      const source = sources.filter((s) => s.start <= time).pop();
+      return source != null && source.value !== 'live';
+    };
+  }
+
+  // class of a media playlist (NONE, MARKED_LIVE, SSAI) and the indexes of its ad segments
+  function detectAds(text) {
+    const lines = text.split('\n').map((line) => line.trim());
+    const inStitchedBreak = stitchedBreak(lines);
+    const adSegments = [];
+    readSegments(lines).forEach((segment, index) => {
+      if (isAdSegment(segment.title, lines[segment.uri]) || (inStitchedBreak && inStitchedBreak(segment))) adSegments.push(index);
+    });
+    if (adSegments.length) return { class: 'SSAI', adSegments };
+    return { class: lines.some(isPlaylistMarker) ? 'MARKED_LIVE' : 'NONE', adSegments };
+  }
+
+  // T-204: a backup is clean when it has no ad segment and no stitched-ad marker (an announced break of its own)
+  const isCleanBackup = (text) => detectAds(text).class !== 'SSAI' && !text.split('\n').some((line) => isStitchedMarker(line.trim()));
+
+  // what the logs say about a playlist
+  function summarize(text) {
+    const lines = text.split('\n').map((l) => l.trim());
+    const classes = new Set();
+    let rollType = '';
+    let podLength = '';
+    let stitched = false;
+    let segments = 0;
+    for (const line of lines) {
+      if (line.startsWith('#EXT-X-DATERANGE:')) {
+        const cls = attr(line, 'CLASS');
+        if (cls) classes.add(cls);
+        if (isStitchedMarker(line)) {
+          stitched = true;
+          rollType = rollType || attr(line, 'X-TV-TWITCH-AD-ROLL-TYPE');
+          podLength = podLength || attr(line, 'X-TV-TWITCH-AD-POD-LENGTH');
+        }
+      } else if (line.startsWith('#EXTINF:')) {
+        segments++;
+      } else if (line.startsWith('#EXT-X-CUE-OUT')) {
+        classes.add('(EXT-X-CUE-OUT)');
+      }
+    }
+    const detected = detectAds(text);
+    return { classes: [...classes], stitched, rollType, podLength, segments, adSegments: detected.adSegments.length, cls: detected.class, mediaSequence: mediaSequence(lines) };
+  }
+
+  // --- sequence numbers against date-time (sequence.ts) -------------------------------------------------
+
+  const MEDIA_SEQUENCE = '#EXT-X-MEDIA-SEQUENCE:';
+
+  function mediaSequence(lines) {
+    const line = lines.find((raw) => raw.trim().startsWith(MEDIA_SEQUENCE));
+    const value = line ? Number(line.trim().slice(MEDIA_SEQUENCE.length)) : NaN;
+    return Number.isInteger(value) ? value : null;
+  }
+
+  // F-24: the last number the player can fetch from a playlist, prefetch URIs included
+  function newestNumber(text) {
+    const lines = text.split('\n');
+    const first = mediaSequence(lines);
+    if (first == null) return null;
+    const count = lines.filter((raw) => {
+      const line = raw.trim();
+      return line.startsWith('#EXTINF:') || line.startsWith('#EXT-X-TWITCH-PREFETCH:');
+    }).length;
+    return first + count - 1;
+  }
+
+  // the newest segment that is not an ad and has a date-time; with beforeAds, the newest before the first ad segment
+  function sequenceReference(text, beforeAds) {
+    const lines = text.split('\n');
+    const first = mediaSequence(lines);
+    if (first == null) return null;
+    const segments = readSegments(lines);
+    const ads = new Set(detectAds(text).adSegments);
+    const end = beforeAds && ads.size ? Math.min(...ads) : segments.length;
+    for (let index = end - 1; index >= 0; index--) {
+      const segment = segments[index];
+      if (!ads.has(index) && segment.time != null && segment.duration > 0) return { sequence: first + index, time: segment.time, duration: segment.duration };
+    }
+    return null;
+  }
+
+  // what to add to the backup's numbers so each of its segments gets the number the page's playlist gives the moment
+  // where it ends (a backup segment starting inside a page segment gets the next number)
+  function sequenceShift(backup, reference) {
+    const own = sequenceReference(backup);
+    if (!own) return null;
+    const position = reference.sequence + (own.time - reference.time) / (reference.duration * 1000);
+    return Math.ceil(position - own.sequence - SEQUENCE_TOLERANCE) || 0;
+  }
+
+  // only the MEDIA-SEQUENCE line moves; EXT-X-TWITCH-LIVE-SEQUENCE stays (it numbers the live stream alike on every token)
+  function shiftSequence(text, shift) {
+    if (!shift) return text;
+    const lines = text.split('\n');
+    const index = lines.findIndex((raw) => raw.trim().startsWith(MEDIA_SEQUENCE));
+    const first = mediaSequence(lines);
+    if (index < 0 || first == null) return text;
+    lines[index] = lines[index].replace(String(first), String(first + shift));
+    return lines.join('\n');
+  }
+
+  // --- playlist edits (m3u8.ts): on the lines of the original text, every tag kept where it was ----------
+
+  // EXT-X-MAP line in effect for each segment, in segment order; null in a playlist without one
+  function mapsOf(lines, segments) {
+    const maps = [];
+    let current = null;
+    let next = 0;
+    lines.forEach((raw, index) => {
+      const line = raw.trim();
+      if (line.startsWith('#EXT-X-MAP:')) current = line;
+      while (next < segments.length && segments[next].uri === index) {
+        maps.push(current);
+        next++;
+      }
+    });
+    return maps;
+  }
+
+  // F-13: a backup segment matches when its PROGRAM-DATE-TIME is less than half the ad segment's duration away
+  function nearest(candidates, segment) {
+    if (segment.time == null) return undefined;
+    const tolerance = ((segment.duration > 0 ? segment.duration : 2) * 1000) / 2;
+    let best;
+    for (const candidate of candidates) {
+      if (candidate.time == null) continue;
+      const distance = Math.abs(candidate.time - segment.time);
+      if (distance < tolerance && (!best || distance < Math.abs(best.time - segment.time))) best = candidate;
+    }
+    return best;
+  }
+
+  const isAheadLine = (line) => line.startsWith('#EXT-X-TWITCH-PREFETCH:') || line.startsWith('#EXT-X-PRELOAD-HINT:') || line.startsWith('#EXT-X-PART:');
+
+  // Each ad segment of the main playlist (first text) gets the nearest live segment of a backup, backups in order;
+  // only its #EXTINF and URI lines change. A backup segment with another EXT-X-MAP brings that MAP line before it and
+  // the main one comes back before the next main segment; a backup with EXT-X-MAP is not used in a playlist without one.
+  function mergeWithBackups(contents) {
+    if (!contents.length) return { text: '', replaced: 0, remaining: [] };
+    const main = contents[0];
+    const backups = contents.slice(1);
+    const lines = main.split('\n');
+    const backupSegments = backups.map((text) => {
+      const backupLines = text.split('\n');
+      const segments = readSegments(backupLines);
+      const maps = mapsOf(backupLines, segments);
+      const ads = new Set(detectAds(text).adSegments);
+      const out = [];
+      segments.forEach((segment, index) => {
+        if (!ads.has(index)) out.push({ ...segment, uriLine: backupLines[segment.uri].trim(), map: maps[index] });
+      });
+      return out;
+    });
+
+    const segments = readSegments(lines);
+    const mainMaps = mapsOf(lines, segments);
+    const ads = new Set(detectAds(main).adSegments);
+    const replacements = new Map();
+    const remaining = [];
+    segments.forEach((segment, index) => {
+      if (!ads.has(index)) return;
+      const usable = (candidate) => (candidate.map == null) === (mainMaps[index] == null);
+      let replacement;
+      for (const candidates of backupSegments) {
+        replacement = nearest(candidates.filter(usable), segment);
+        if (replacement) break;
+      }
+      if (replacement) replacements.set(index, replacement);
+      else remaining.push(index);
+    });
+    if (!replacements.size) return { text: main, replaced: 0, remaining };
+
+    // the line each segment starts at for the MAP it needs: its #EXTINF, else its URI
+    const anchors = new Map(segments.map((segment, index) => [segment.extinf >= 0 ? segment.extinf : segment.uri, index]));
+    const lastUri = segments.length ? segments[segments.length - 1].uri : -1;
+    const out = [];
+    let mainMap = null;
+    let outMap = null;
+    const useMap = (map) => {
+      if (map == null || map === outMap) return;
+      out.push(map);
+      outMap = map;
+    };
+    lines.forEach((raw, index) => {
+      const line = raw.trim();
+      if (line.startsWith('#EXT-X-MAP:')) {
+        mainMap = outMap = line;
+        out.push(raw);
+        return;
+      }
+      const anchored = anchors.get(index);
+      if (anchored != null) {
+        const r = replacements.get(anchored);
+        useMap(r ? r.map : mainMap);
+      } else if (index > lastUri && isAheadLine(line)) {
+        useMap(mainMap);
+      }
+      const owner = segments.findIndex((segment) => segment.extinf === index || segment.uri === index);
+      const replacement = owner >= 0 ? replacements.get(owner) : undefined;
+      if (!replacement) out.push(raw);
+      else if (segments[owner].extinf === index) out.push('#EXTINF:' + replacement.durationText + ',' + replacement.title);
+      else out.push(replacement.uriLine);
+    });
+    return { text: out.join('\n'), replaced: replacements.size, remaining };
+  }
+
+  // URI of a line that makes the player fetch media ahead of the segments
+  function aheadUri(line) {
+    if (line.startsWith('#EXT-X-TWITCH-PREFETCH:')) return line.slice('#EXT-X-TWITCH-PREFETCH:'.length).trim();
+    if (line.startsWith('#EXT-X-PART:') || line.startsWith('#EXT-X-PRELOAD-HINT:')) return uriAttr(line);
+    return null;
+  }
+
+  // F-14: the ad segments no backup replaced (adSegments: indexes in segment order) keep their lines and their URIs are
+  // listed, with the EXT-X-MAP only ad segments use, for the fetch hook to answer with the blank segment. Lines that make
+  // the player fetch ad media ahead go, and their URIs are listed too: the EXT-X-PART lines of an ad segment; the
+  // PART, PRELOAD-HINT and TWITCH-PREFETCH lines after the last segment when it is an ad or when they follow a break
+  // announced after it (B-034); any of them with an ad URI. Every other line stays.
+  function blankAds(text, adSegments, playlistUrl) {
+    const lines = text.split('\n');
+    const segments = readSegments(lines);
+    const ads = new Set(adSegments.filter((index) => index >= 0 && index < segments.length));
+    const resolve = (uri) => {
+      if (/^[a-z][a-z0-9+.-]*:/i.test(uri)) return uri;
+      try {
+        return new URL(uri, playlistUrl).href;
+      } catch {
+        return uri;
+      }
+    };
+
+    const segmentUris = [...ads].sort((a, b) => a - b).map((index) => resolve(lines[segments[index].uri].trim()));
+    const known = new Set(segmentUris);
+    const last = segments.length - 1;
+    const lastUri = last >= 0 ? segments[last].uri : -1;
+    const announced = lines.findIndex((line, index) => index > lastUri && isStitchedMarker(line.trim()));
+
+    const maps = [];
+    const ahead = [];
+    const removed = new Set();
+    let map = null;
+    const closeMap = () => {
+      if (map && map.segments.length && map.segments.every((index) => ads.has(index))) maps.push(map.uri);
+    };
+    let owner = 0; // segment whose URI line comes next: the tags before a URI line belong to that segment
+    lines.forEach((raw, index) => {
+      while (owner < segments.length && segments[owner].uri < index) owner++;
+      const line = raw.trim();
+      if (line.startsWith('#EXT-X-MAP:')) {
+        closeMap();
+        const uri = uriAttr(line);
+        map = uri == null ? null : { uri: resolve(uri), segments: [] };
+        return;
+      }
+      if (owner < segments.length && segments[owner].uri === index) {
+        if (map) map.segments.push(owner);
+        return;
+      }
+      const uri = aheadUri(line);
+      if (uri == null) return;
+      const absolute = resolve(uri);
+      const tail = owner >= segments.length;
+      const ad =
+        known.has(absolute) ||
+        isAdUri(absolute) ||
+        (!tail && line.startsWith('#EXT-X-PART:') && ads.has(owner)) ||
+        (tail && (ads.has(last) || (announced >= 0 && index > announced)));
+      if (!ad) return;
+      removed.add(index);
+      ahead.push(absolute);
+    });
+    closeMap();
+
+    return {
+      text: removed.size ? lines.filter((_, index) => !removed.has(index)).join('\n') : text,
+      uris: [...segmentUris, ...maps, ...ahead],
+      segments: segmentUris.length,
+    };
+  }
+
+  // F-20: the ad's own DATERANGE lines, which the page's ad UI starts from, leave a playlist we deliver edited
+  const AD_DATERANGE = /^#EXT-X-DATERANGE:.*CLASS="(twitch-stitched-ad|twitch-ad-quartile)"/;
+  function stripAdDateranges(text) {
+    const lines = text.split('\n');
+    const kept = lines.filter((line) => !AD_DATERANGE.test(line.trim()));
+    return kept.length === lines.length ? text : kept.join('\n');
+  }
+
+  // --- GQL through the page (its original fetch and its headers), else from here (page-gql.ts) ------------
+
+  function gqlViaPage(body, headers) {
+    const id = state.gqlNext++;
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        if (!state.gqlPending.delete(id)) return;
+        log('GQL request ' + id + ' not answered by the page; sent from the worker');
+        resolve(request(GQL_URL, { method: 'POST', headers, body }));
+      }, PAGE_GQL_TIMEOUT_MS);
+      state.gqlPending.set(id, (answer) => {
+        clearTimeout(timer);
+        resolve(answer.status ? new Response(answer.body || '', { status: answer.status }) : request(GQL_URL, { method: 'POST', headers, body }));
+      });
+      post({ adblock: 'gql', id, body, headers });
+    });
+  }
+
+  async function gql(body) {
+    const headers = { ...state.gqlHeaders, 'Client-ID': CLIENT_ID, 'Content-Type': 'text/plain;charset=UTF-8' };
+    const response = await gqlViaPage(JSON.stringify(body), headers);
+    const text = await response.text();
+    let answer;
+    try {
+      answer = JSON.parse(text);
+    } catch {
+      throw new Error('GQL HTTP ' + response.status + ': ' + text.slice(0, 80));
+    }
+    const access = (answer && answer.data && answer.data.streamPlaybackAccessToken) || (answer && answer.streamPlaybackAccessToken);
+    if (access && access.value && access.signature) return { token: access.value, signature: access.signature };
+    const error = answer && answer.errors && answer.errors[0] && answer.errors[0].message;
+    return { error: error || 'no token in answer: ' + text.slice(0, 80) };
+  }
+
+  // F-07: the persisted query first, the full query when it gives no token
+  async function playbackAccessToken(channel, playerType, platform) {
+    const variables = { isLive: true, login: channel, isVod: false, vodID: '', playerType, platform };
+    const persisted = await gql({ operationName: 'PlaybackAccessToken', variables, extensions: { persistedQuery: { version: 1, sha256Hash: PLAYBACK_ACCESS_TOKEN_HASH } } });
+    if (persisted.token) return persisted;
+    const full = await gql({ operationName: 'PlaybackAccessToken_Template', query: PLAYBACK_ACCESS_TOKEN_QUERY, variables });
+    if (full.token) return full;
+    throw new Error('PlaybackAccessToken ' + playerType + ': ' + (full.error || persisted.error));
+  }
+
+  // F-08: the usher URL of a backup is the page's own usher request with token, sig and p replaced
   function usherUrl(channel, access, original) {
     const replaced = { token: encodeURIComponent(access.token), sig: encodeURIComponent(access.signature), p: String(Math.floor(Math.random() * 1e7)) };
     if (original) {
@@ -164,188 +701,430 @@
     );
   }
 
-  // --- GQL: through the page (its original fetch and its headers), else from here -------------------
+  // --- the backup masters, one per player type (stream.ts) ----------------------------------------------
 
-  function gqlViaPage(body, headers) {
-    const id = state.gqlNext++;
-    return new Promise((resolve) => {
-      const timer = setTimeout(() => {
-        if (!state.gqlPending.delete(id)) return;
-        resolve(request('https://gql.twitch.tv/gql#origin=twilight', { method: 'POST', headers, body }));
-      }, PAGE_GQL_TIMEOUT_MS);
-      state.gqlPending.set(id, (answer) => {
-        clearTimeout(timer);
-        resolve(answer.status ? new Response(answer.body || '', { status: answer.status }) : request('https://gql.twitch.tv/gql#origin=twilight', { method: 'POST', headers, body }));
-      });
-      post({ adblock: 'gql', id, body, headers });
-    });
+  // a token request for a type while one is in flight waits for it
+  function createStreamAccess(type) {
+    if (!state.channel) return Promise.resolve();
+    const inFlight = state.pendingAccess.get(type);
+    if (inFlight) return inFlight;
+    const pending = requestStreamAccess(type).finally(() => state.pendingAccess.delete(type));
+    state.pendingAccess.set(type, pending);
+    return pending;
   }
 
-  async function gql(body) {
-    const headers = { ...state.gqlHeaders, 'Client-ID': CLIENT_ID, 'Content-Type': 'text/plain;charset=UTF-8' };
-    const response = await gqlViaPage(JSON.stringify(body), headers);
-    const text = await response.text();
-    let answer;
+  async function requestStreamAccess(type) {
+    const channel = state.channel;
+    const started = Date.now();
     try {
-      answer = JSON.parse(text);
-    } catch {
-      throw new Error('GQL HTTP ' + response.status + ': ' + text.slice(0, 80));
+      const access = await playbackAccessToken(channel, type, platformOf(type));
+      const master = await (await request(usherUrl(channel, access, state.usherUrl))).text();
+      const variants = parseVariants(master);
+      if (channel !== state.channel) return; // the player moved to another channel meanwhile
+      if (!variants.length) {
+        log('backup ' + type + ': master without variants (' + master.replace(/\s+/g, ' ').slice(0, 100) + ')');
+        return;
+      }
+      state.backups.set(type, { variants, token: tokenFlags(access.token), at: Date.now() });
+      log('backup ' + type + ': master ready in ' + (Date.now() - started) + ' ms, variants ' + variants.map((v) => v.name).join('/'));
+    } catch (e) {
+      log('backup ' + type + ': token or master failed: ' + String((e && e.message) || e).slice(0, 160));
     }
-    const access = (answer && answer.data && answer.data.streamPlaybackAccessToken) || (answer && answer.streamPlaybackAccessToken);
-    if (access && access.value && access.signature) return { token: access.value, signature: access.signature };
-    const error = answer && answer.errors && answer.errors[0] && answer.errors[0].message;
-    return { error: error || ('no token in answer: ' + text.slice(0, 80)) };
   }
 
-  async function playbackAccessToken(channel, playerType, platform) {
-    const variables = { isLive: true, login: channel, isVod: false, vodID: '', playerType, platform };
-    const persisted = await gql({ operationName: 'PlaybackAccessToken', variables, extensions: { persistedQuery: { version: 1, sha256Hash: PLAYBACK_ACCESS_TOKEN_HASH } } });
-    if (persisted.token) return persisted;
-    const full = await gql({ operationName: 'PlaybackAccessToken_Template', query: PLAYBACK_ACCESS_TOKEN_QUERY, variables });
-    if (full.token) return full;
-    throw new Error('PlaybackAccessToken ' + playerType + ': ' + (full.error || persisted.error));
+  // F-19, F-22: a token for each backup type with no stored master, at most once per PREWARM_MS
+  function prewarmBackups(reason) {
+    if (!state.channel) return;
+    const now = Date.now();
+    if (now - state.lastPrewarm < PREWARM_MS) return;
+    const types = backupPlayerTypes().filter((type) => !state.backups.has(type));
+    if (!types.length) return;
+    state.lastPrewarm = now;
+    for (const type of types) createStreamAccess(type);
+    log('prewarm (' + reason + '): tokens asked for ' + types.join(', '));
+    emit('backupsPrewarmed', { reason, types });
   }
 
-  // --- playlist inspection ------------------------------------------------------------------------
+  // --- the player (player.ts) --------------------------------------------------------------------------
 
-  const isStitched = (line) => line.startsWith('#EXT-X-DATERANGE:') && (attr(line, 'CLASS').startsWith('twitch-stitched') || attr(line, 'ID').startsWith('stitched-ad'));
+  // F-09 + F-10: the pinned type first, autoplay last
+  function backupPlayerTypes() {
+    const pinned = state.pinnedType && BACKUP_TYPES.includes(state.pinnedType) ? state.pinnedType : null;
+    const ordered = pinned ? [pinned, ...BACKUP_TYPES.filter((type) => type !== pinned)] : BACKUP_TYPES.slice();
+    return [...ordered, LOW_QUALITY_TYPE];
+  }
 
-  function inspect(text) {
-    const lines = text.split('\n').map((l) => l.trim());
-    const classes = new Set();
-    let rollType = '';
-    let podLength = '';
-    let stitched = false;
-    let segments = 0;
-    let adSegments = 0;
-    let mediaSequence = null;
-    for (const line of lines) {
-      if (line.startsWith('#EXT-X-DATERANGE:')) {
-        const cls = attr(line, 'CLASS');
-        if (cls) classes.add(cls);
-        if (isStitched(line)) {
-          stitched = true;
-          rollType = rollType || attr(line, 'X-TV-TWITCH-AD-ROLL-TYPE');
-          podLength = podLength || attr(line, 'X-TV-TWITCH-AD-POD-LENGTH');
+  // F-11: the variant of the player's master the polled playlist belongs to, else the quality name
+  function variantTarget(url) {
+    const variant = state.playerVariants.get(withoutQuery(url));
+    return variant ? { quality: variant.name, resolution: variant.resolution, codecs: variant.codecs } : { quality: state.quality || '' };
+  }
+
+  function pauseAndPlay(why) {
+    log('pause/play requested: ' + why);
+    post({ adblock: 'pause' });
+    post({ adblock: 'play' });
+    post({ adblock: 'play' });
+  }
+
+  async function fetchBackup(type, target) {
+    const master = state.backups.get(type);
+    if (!master) return { type, data: null, dump: [], contaminated: false, verdict: 'no-master' };
+    const variant = pickVariant(master.variants, target);
+    if (!variant) {
+      state.backups.delete(type);
+      return { type, data: null, dump: [], contaminated: false, verdict: 'no-variant' };
+    }
+    let text;
+    try {
+      const response = await request(variant.url);
+      if (!response.ok) throw new Error('status ' + response.status);
+      text = await response.text();
+    } catch (e) {
+      state.backups.delete(type);
+      return { type, data: null, dump: [], contaminated: false, verdict: 'error', detail: String((e && e.message) || e).slice(0, 100), variant };
+    }
+    if (!isCleanBackup(text)) {
+      // T-204: a backup announcing its own break is dropped like one with ads; its live segments still serve the merge
+      state.backups.delete(type);
+      return { type, data: null, dump: [text], contaminated: true, verdict: detectAds(text).class === 'SSAI' ? 'ads' : 'announced', variant };
+    }
+    return { type, data: text, dump: [text], contaminated: false, verdict: 'clean', variant };
+  }
+
+  // F-09, F-10: a type that gave no clean backup gets a new token; one whose backup had ads is left out for a while
+  function noteBackup(backup, dump) {
+    if (!backup.data) createStreamAccess(backup.type);
+    for (const text of backup.dump) dump.push(text);
+    if (backup.contaminated && !backup.data) state.contaminatedUntil.set(backup.type, Date.now() + CONTAMINATED_MS);
+  }
+
+  // F-23: the backup gets the numbers the page's playlist gives the same date-time; one shift per variant and break
+  function alignSequence(backup, variant, main) {
+    const key = withoutQuery(variant.url);
+    let shift = state.sequenceShifts.get(key);
+    if (shift == null) {
+      const reference = state.pageSequence || sequenceReference(main, true);
+      const computed = reference ? sequenceShift(backup, reference) : null;
+      if (computed == null) return { text: backup, shift: null };
+      shift = computed;
+      state.sequenceShifts.set(key, shift);
+      if (shift) emit('sequenceShifted', { playerType: null, shift });
+    }
+    return { text: shiftSequence(backup, shift), shift };
+  }
+
+  // F-25: a playlist from another source whose newest number is not past the last one's: the player would wait
+  function listsNothingNew(text, source) {
+    if (!state.delivered || state.delivered.source === source) return false;
+    const newest = newestNumber(text);
+    return newest != null && newest <= state.delivered.newest;
+  }
+
+  function useBackup(backup, aligned, source) {
+    if (backup.type !== LOW_QUALITY_TYPE) state.pinnedType = backup.type;
+    const b = state.break;
+    const quality = backup.variant ? backup.variant.name : '?';
+    if (b) {
+      b.swapped++;
+      const last = b.backups[b.backups.length - 1];
+      if (!last || last.type !== backup.type || last.quality !== quality) b.backups.push({ type: backup.type, quality, at: Date.now(), shift: aligned.shift });
+    }
+    if (state.source !== source) {
+      log('player <- backup ' + backup.type + '@' + quality + ' (MEDIA-SEQUENCE shift ' + (aligned.shift == null ? 'n/a' : (aligned.shift >= 0 ? '+' : '') + aligned.shift) + ', newest ' + newestNumber(aligned.text) + ')');
+      emit('backupUsed', { playerType: backup.type, quality, shift: aligned.shift });
+    }
+    state.source = source;
+    return aligned.text;
+  }
+
+  // F-14: these URIs are answered with the blank segment from now on
+  function listBlank(uris, counted) {
+    const now = Date.now();
+    const added = uris.slice(0, counted).filter((uri) => !isBlankSegment(uri)).length;
+    for (const [uri, at] of state.blankUris) if (now - at > BLANK_TTL_MS) state.blankUris.delete(uri);
+    for (const uri of uris) state.blankUris.set(uri, now);
+    if (added) {
+      if (state.break) state.break.blankListed += added;
+      emit('blankInserted', { count: added });
+      post({ adblock: 'blank', uris: uris.slice(0, counted) });
+    }
+  }
+
+  function isBlankSegment(url) {
+    const at = state.blankUris.get(url);
+    return at != null && Date.now() - at <= BLANK_TTL_MS;
+  }
+
+  // ad-break.ts: idle -> ad on the first poll with ad segments, ad -> recovering on the first without, back to idle
+  // after RECOVERING_MS of clean polls; ads inside that window are the same break
+  function adBreakPoll(ads, text, summary) {
+    const now = Date.now();
+    switch (state.adState) {
+      case 'idle':
+        if (ads) {
+          state.adState = 'ad';
+          startBreak(now, summary, false);
         }
-      } else if (line.startsWith('#EXTINF:')) {
-        segments++;
-        const title = line.slice(line.indexOf(',') + 1).trim();
-        if (title && title !== 'live') adSegments++;
-      } else if (line.startsWith('#EXT-X-MEDIA-SEQUENCE:')) {
-        mediaSequence = parseInt(line.slice(22), 10);
-      } else if (line.startsWith('#EXT-X-CUE-OUT')) {
-        classes.add('(EXT-X-CUE-OUT)');
+        break;
+      case 'ad':
+        if (!ads) {
+          state.adState = 'recovering';
+          state.endedAt = now;
+          endBreak(now);
+        }
+        break;
+      case 'recovering':
+        if (ads) {
+          state.adState = 'ad';
+          startBreak(now, summary, true);
+        } else if (now - state.endedAt >= RECOVERING_MS) {
+          state.adState = 'idle';
+          state.break = null;
+        }
+        break;
+    }
+  }
+
+  function startBreak(now, summary, resumed) {
+    state.break = {
+      at: now,
+      resumed,
+      channel: state.channel,
+      quality: state.quality,
+      rollType: summary.rollType,
+      podLength: summary.podLength,
+      adSegments: summary.adSegments,
+      segments: summary.segments,
+      classes: summary.classes,
+      polls: 0,
+      swapped: 0,
+      merged: 0,
+      blanked: 0,
+      blankListed: 0,
+      backups: [],
+    };
+    log('AD BREAK' + (resumed ? ' (again)' : '') + ' in the player playlist: roll=' + (summary.rollType || '?') + ' pod=' + (summary.podLength || '?') + ' adSegments=' + summary.adSegments + '/' + summary.segments + ' seq=' + summary.mediaSequence + ' quality=' + (state.quality || '?'));
+    post({ adblock: 'break', info: { ...state.break } });
+  }
+
+  function endBreak(now) {
+    const b = state.break;
+    if (!b) return;
+    const info = { ...b, endedAt: now, durationMs: now - b.at, blankAnswered: state.blankAnswered };
+    log('AD BREAK over after ' + Math.round(info.durationMs / 1000) + ' s: polls=' + b.polls + ' swapped=' + b.swapped + ' merged=' + b.merged + ' blanked=' + b.blanked + ' (uris listed ' + b.blankListed + ', answered blank so far ' + state.blankAnswered + ') backups=' + (b.backups.map((x) => x.type + '@' + x.quality).join(' > ') || 'none'));
+    post({ adblock: 'break-end', info });
+  }
+
+  // F-24: the player asks for the number after the last segment it fetched; when the playlist now comes from another
+  // source and numbers below that, it would wait for numbers that never come: it is restarted (pause and play) once
+  function followSequence(text) {
+    const newest = newestNumber(text);
+    if (newest == null) return;
+    const previous = state.delivered;
+    state.delivered = { source: state.source, newest };
+    if (!previous || previous.source === state.source || newest >= previous.newest) return;
+    log('sequence back ' + previous.newest + ' -> ' + newest + ' at a change of source (' + previous.source.slice(-24) + ' -> ' + state.source.slice(-24) + ')');
+    emit('sequenceRestart', { from: previous.newest, to: newest });
+    pauseAndPlay('sequence back');
+  }
+
+  async function onFetch(text, url) {
+    state.source = MAIN_SOURCE;
+    const out = await playlistFor(text, url);
+    followSequence(out);
+    return out;
+  }
+
+  async function playlistFor(text, url) {
+    if (!state.channel) return text;
+    const summary = summarize(text);
+    notePoll(summary);
+
+    if (summary.cls === 'MARKED_LIVE') {
+      // markers over live segments: the ad comes client-side (twitch-maf-ad, answered empty by the page) or the break
+      // is announced past the last segment (B-034): its prefetch lines go and their URIs are answered blank
+      state.pageSequence = sequenceReference(text) || state.pageSequence;
+      const announced = blankAds(text, [], url);
+      if (!announced.uris.length) return text;
+      listBlank(announced.uris, announced.uris.length);
+      log('break announced past the last segment: ' + announced.uris.length + ' prefetch URI(s) removed and answered blank');
+      return stripAdDateranges(announced.text);
+    }
+    if (summary.cls !== 'SSAI') {
+      adBreakPoll(false, text, summary);
+      state.pageSequence = sequenceReference(text) || state.pageSequence;
+      state.sequenceShifts.clear();
+      return text;
+    }
+
+    adBreakPoll(true, text, summary);
+    const b = state.break;
+    if (b) b.polls++;
+    emit('adDetected', { adSegments: summary.adSegments, segments: summary.segments });
+
+    // F-09, F-10, F-25, F-26: the first type alone, then the rest at once, in order; a clean backup that lists nothing
+    // past the player's newest number waits for the types after it
+    const dump = [];
+    const target = variantTarget(url);
+    const now = Date.now();
+    const types = backupPlayerTypes().filter((type) => (state.contaminatedUntil.get(type) || 0) <= now);
+    const rounds = [types.slice(0, 1), types.slice(1)].filter((round) => round.length);
+    let behind = null;
+    for (const round of rounds) {
+      const backups = await Promise.all(round.map((type) => fetchBackup(type, target)));
+      for (const backup of backups) noteBackup(backup, dump);
+      log('backups: ' + backups.map((x) => x.type + '=' + x.verdict + (x.variant ? '@' + x.variant.name : '') + (x.detail ? '(' + x.detail + ')' : '')).join('  '));
+      for (const backup of backups) {
+        if (!backup.data) continue;
+        const source = withoutQuery(backup.variant.url);
+        const aligned = alignSequence(backup.data, backup.variant, text);
+        if (listsNothingNew(aligned.text, source)) {
+          emit('backupBehind', { playerType: backup.type });
+          log('backup ' + backup.type + ' lists nothing past ' + state.delivered.newest + ': kept as the last choice');
+          if (!behind) behind = { backup, aligned, source };
+          continue;
+        }
+        return useBackup(backup, aligned, source);
       }
     }
-    const verdict = adSegments ? 'ads' : stitched ? 'announced' : 'clean';
-    return { classes: [...classes], stitched, rollType, podLength, segments, adSegments, mediaSequence, verdict };
-  }
+    if (behind) return useBackup(behind.backup, behind.aligned, behind.source);
 
-  function onMaster(url, text) {
-    const token = tokenFromUsherUrl(url);
-    const flags = token ? tokenFlags(token) : {};
-    const variants = parseVariants(text);
-    let channel = null;
-    try {
-      channel = decodeURIComponent(new URL(url).pathname.split('/').pop().replace(/\.m3u8$/, ''));
-    } catch {
-      // keep null
+    // no clean backup: the page's playlist with ad segments replaced by time (F-13), the rest answered blank (F-14)
+    const merged = mergeWithBackups([text, ...dump]);
+    if (merged.replaced) emit('segmentsReplaced', { count: merged.replaced });
+    if (b) b.merged++;
+    if (!merged.remaining.length) {
+      log('player <- page playlist with ' + merged.replaced + ' ad segment(s) replaced from the backups');
+      return stripAdDateranges(merged.text);
     }
-    const info = { channel, playerType: flags.player_type, flags, variants: variants.map((v) => v.name) };
-    log('master ' + (channel || '?') + ' player_type=' + flags.player_type + ' show_ads=' + flags.show_ads + ' server_ads=' + flags.server_ads + ' hide_ads=' + flags.hide_ads + ' variants=' + info.variants.join('/'));
-    post({ adblock: 'master', info });
-    if (flags.player_type === 'picture-by-picture' && state.usherUrl) return; // the page's own PbyP master: not the stream being watched
-    state.channel = channel;
-    state.usherUrl = url;
-    state.variants = variants;
+    const blanked = blankAds(merged.text, merged.remaining, url);
+    listBlank(blanked.uris, blanked.segments);
+    if (b) b.blanked++;
+    log('player <- page playlist with ' + merged.replaced + ' ad segment(s) replaced and ' + blanked.segments + ' left (answered blank), ' + (blanked.uris.length - blanked.segments) + ' ahead URI(s) removed');
+    return stripAdDateranges(blanked.text);
   }
 
-  function onPlaylist(url, text) {
-    if (!text.startsWith('#EXTM3U') || !text.includes('#EXTINF')) return;
+  function notePoll(summary) {
     state.polls++;
-    const current = state.variants.find((v) => v.url.split('?')[0] === url.split('?')[0]);
-    if (current) state.quality = current.name;
-    const info = inspect(text);
-    const fresh = info.classes.filter((c) => !state.seenClasses.has(c));
+    const fresh = summary.classes.filter((c) => !state.seenClasses.has(c));
     for (const c of fresh) state.seenClasses.add(c);
     if (fresh.length) {
-      log('DATERANGE classes seen: ' + fresh.join(', ') + (info.stitched ? ' (roll=' + (info.rollType || '?') + ', pod=' + (info.podLength || '?') + ', adSegments=' + info.adSegments + '/' + info.segments + ')' : ''));
+      log('DATERANGE classes seen: ' + fresh.join(', ') + (summary.stitched ? ' (roll=' + (summary.rollType || '?') + ', pod=' + (summary.podLength || '?') + ', adSegments=' + summary.adSegments + '/' + summary.segments + ')' : ''));
       post({ adblock: 'classes', classes: fresh });
     }
-    if (state.polls % 30 === 1) log('poll #' + state.polls + ' quality=' + (state.quality || '?') + ' seq=' + info.mediaSequence + ' segments=' + info.segments + ' classes=[' + info.classes.join(',') + ']');
-    if (info.stitched && Date.now() - state.lastProbeAt > PROBE_COOLDOWN_MS) {
-      state.lastProbeAt = Date.now();
-      const breakInfo = { at: Date.now(), channel: state.channel, quality: state.quality, rollType: info.rollType, podLength: info.podLength, adSegments: info.adSegments, segments: info.segments, classes: info.classes };
-      log('AD BREAK in the player playlist: roll=' + (info.rollType || '?') + ' pod=' + (info.podLength || '?') + ' adSegments=' + info.adSegments + '/' + info.segments + ' -> probing backups');
-      post({ adblock: 'break', info: breakInfo });
-      runProbe(breakInfo).catch((e) => log('probe failed: ' + e));
-    }
+    if (state.polls % 30 === 1) log('poll #' + state.polls + ' quality=' + (state.quality || '?') + ' seq=' + summary.mediaSequence + ' segments=' + summary.segments + ' class=' + summary.cls + ' classes=[' + summary.classes.join(',') + '] backups=[' + [...state.backups.keys()].join(',') + ']');
   }
 
-  // --- the backup probe ---------------------------------------------------------------------------
+  // --- the fetch routes (app.controller.ts) ------------------------------------------------------------
 
-  async function probeOne({ playerType, platform }, startedAt) {
-    const r = { playerType, platform };
+  const responseInit = (response) => {
+    const headers = {};
+    const type = response.headers.get('Content-Type');
+    if (type) headers['Content-Type'] = type;
+    return { status: response.status, statusText: response.statusText, headers };
+  };
+
+  // the player's usher request: channel, usher URL and variants; a new master clears the sequence state (F-23, F-24)
+  async function onChannelMaster(input, init, url) {
+    const response = await request(input, init);
+    if (!response.ok) {
+      log('usher answered ' + response.status + ' for ' + url.slice(0, 90));
+      return response;
+    }
+    const text = await response.text();
     try {
-      const access = await playbackAccessToken(state.channel, playerType, platform);
-      r.token = tokenFlags(access.token);
-      const master = await (await request(usherUrl(state.channel, access, state.usherUrl))).text();
-      const variants = parseVariants(master);
-      r.variants = variants.map((v) => v.name).join('/');
-      const pick = variants.find((v) => v.name === state.quality) || variants[0];
-      if (!pick) {
-        r.verdict = 'no-variants';
-        r.detail = master.replace(/\s+/g, ' ').slice(0, 120);
-        return r;
+      const channel = channelFromUsher(url);
+      const flags = tokenFlags(tokenFromUsherUrl(url) || '');
+      const variants = parseVariants(text);
+      log('master ' + (channel || '?') + ' player_type=' + flags.player_type + ' show_ads=' + flags.show_ads + ' server_ads=' + flags.server_ads + ' hide_ads=' + flags.hide_ads + ' variants=' + variants.map((v) => v.name).join('/'));
+      post({ adblock: 'master', info: { channel, playerType: flags.player_type, flags, variants: variants.map((v) => v.name) } });
+      if (channel !== state.channel) {
+        state.backups.clear();
+        state.pendingAccess.clear();
+        state.pinnedType = null;
+        state.contaminatedUntil.clear();
+        state.lastPrewarm = -Infinity;
       }
-      r.quality = pick.name;
-      const playlist = await (await request(pick.url)).text();
-      const info = inspect(playlist);
-      r.verdict = info.verdict;
-      r.adSegments = info.adSegments + '/' + info.segments;
-      r.classes = info.classes.join(',');
-      r.mediaSequence = info.mediaSequence;
+      state.channel = channel;
+      state.usherUrl = url;
+      state.playerVariants.clear();
+      for (const variant of variants) state.playerVariants.set(withoutQuery(variant.url), variant);
+      state.pageSequence = null;
+      state.sequenceShifts.clear();
+      state.delivered = null;
+      prewarmBackups('channel load');
     } catch (e) {
-      r.verdict = 'error';
-      r.detail = String((e && e.message) || e).slice(0, 160);
-    } finally {
-      r.ms = Date.now() - startedAt;
+      log('master handling failed: ' + ((e && e.stack) || e));
     }
-    return r;
+    return new Response(text, responseInit(response));
   }
 
-  async function runProbe(breakInfo) {
-    if (state.probing || !state.channel) return;
-    state.probing = true;
-    const startedAt = Date.now();
+  // E10: the page's own picture-by-picture master, 3 to 14 s before most stitched midrolls (B-044): it brings the
+  // prewarm, and the mini player gets an empty answer, as in Purple
+  async function onPbypMaster(input, init, url) {
+    const response = await request(input, init);
+    if (!response.ok) return response;
     try {
-      const results = await Promise.all(PROBE_TYPES.map((p) => probeOne(p, startedAt)));
-      const summary = results.map((r) => r.playerType + '=' + r.verdict + (r.quality ? '@' + r.quality : '') + (r.token && r.token.show_ads === false ? '(show_ads:false)' : '')).join('  ');
-      log('BACKUP PROBE (' + (Date.now() - startedAt) + ' ms, player at ' + (state.quality || '?') + '): ' + summary);
-      for (const r of results) log('  ' + r.playerType + ': ' + JSON.stringify(r));
-      post({ adblock: 'probe', result: { at: startedAt, channel: state.channel, quality: state.quality, break: breakInfo, results } });
-    } finally {
-      state.probing = false;
+      const text = await response.text();
+      for (const variant of parseVariants(text)) state.pbypVariants.add(withoutQuery(variant.url));
+      log('picture-by-picture master requested by the page (answered empty): prewarming backups');
+      post({ adblock: 'master', info: { channel: channelFromUsher(url), playerType: 'picture-by-picture', flags: tokenFlags(tokenFromUsherUrl(url) || ''), variants: [] } });
+      prewarmBackups('picture-by-picture');
+    } catch (e) {
+      log('picture-by-picture handling failed: ' + ((e && e.stack) || e));
     }
+    return new Response('', { status: 200 });
   }
 
-  // --- the fetch hook: responses are cloned, the player gets the original ----------------------------
+  const isPlayerPlaylist = (url) => {
+    const key = withoutQuery(url);
+    if (state.pbypVariants.has(key)) return false;
+    return state.playerVariants.has(key) || (isM3u8(url) && /\/v1\/playlist\//.test(url));
+  };
+
+  async function onMediaPlaylist(input, init, url) {
+    const response = await request(input, init);
+    if (!response.ok) return response;
+    const text = await response.text();
+    if (!text.startsWith('#EXTM3U')) return new Response(text, responseInit(response));
+    const current = state.playerVariants.get(withoutQuery(url));
+    if (current) state.quality = current.name;
+    let out = text;
+    try {
+      out = await onFetch(text, url);
+    } catch (e) {
+      // a failure in the blocking logic must not stop the player: it gets Twitch's playlist
+      log('blocking logic failed, playlist passed through: ' + ((e && e.stack) || e));
+      out = text;
+    }
+    return new Response(out, responseInit(response));
+  }
 
   scope.fetch = async function (input, init) {
-    const url = urlOf(input);
-    const response = await request(input, init);
+    let url = '';
     try {
-      if (isUsher(url)) {
-        response.clone().text().then((text) => onMaster(url, text)).catch(() => {});
-      } else if (isPlaylist(url)) {
-        response.clone().text().then((text) => onPlaylist(url, text)).catch(() => {});
-      }
+      url = urlOf(input);
     } catch {
-      // never let the probe touch the player's request
+      url = '';
     }
-    return response;
+    try {
+      if (url && isBlankSegment(url)) {
+        state.blankAnswered++;
+        if (state.blankAnswered <= 5 || state.blankAnswered % 20 === 0) log('ad media answered with the blank segment (#' + state.blankAnswered + '): ' + url.slice(0, 100));
+        emit('blankAnswered', { url });
+        return blankSegment();
+      }
+      if (isUsher(url)) return await (isPbypUsher(url) ? onPbypMaster(input, init, url) : onChannelMaster(input, init, url));
+      if (isPlayerPlaylist(url)) return await onMediaPlaylist(input, init, url);
+    } catch (e) {
+      log('fetch hook failed, request passed through: ' + ((e && e.stack) || e));
+    }
+    return request(input, init);
   };
+
+  // the pure pieces, for test/twitch-playlists.mjs
+  scope.__adblockTwitchWorker = { detectAds, readSegments, isCleanBackup, mergeWithBackups, blankAds, stripAdDateranges, newestNumber, sequenceReference, sequenceShift, shiftSequence, parseVariants, pickVariant, summarize };
 
   log('worker hook installed');
 })(self);
