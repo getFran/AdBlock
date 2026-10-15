@@ -4,8 +4,10 @@
 //   node test/verify.mjs [generic|youtube|twitch|all] [--channel=msedge|chromium|chrome] [--headless=true]
 //                        [--seconds=120] [--twitch=<login>] [--video=<youtube id>] [--keep-profile]
 //
-// Default browser: msedge (Playwright's Chromium has no H.264, which Twitch needs; branded Chrome >= 137
-// refuses --load-extension). Each run starts from a fresh profile under test/profiles/ unless --keep-profile.
+// Default browser: Playwright's Chromium (--channel=chromium, which brings H.264/AAC; branded Chrome >= 137 refuses
+// --load-extension and Edge is not installed). Each run starts from a fresh profile under test/profiles/ unless
+// --keep-profile. Twitch: --twitch=<login>[,<login>...] watches each channel up to --seconds and stops after the first
+// complete stitched break; without --twitch the top live channel is used.
 // Every check prints what it saw; a check that saw no ad says so instead of passing.
 
 import fs from 'node:fs';
@@ -22,7 +24,7 @@ const opt = (name, def) => {
   return a ? a.slice(name.length + 3) : def;
 };
 const flag = (name) => args.includes(`--${name}`);
-const CHANNEL = opt('channel', 'msedge');
+const CHANNEL = opt('channel', 'chromium');
 const HEADLESS = opt('headless', 'false') === 'true';
 const SECONDS = Number(opt('seconds', 120));
 const CLIENT_ID = 'kimne78kx3ncx6brgo4mv6wki5h1ko';
@@ -240,8 +242,66 @@ async function pickTwitchChannel(context) {
   return edges[0].node.broadcaster.login;
 }
 
-async function testTwitch({ context, sw }) {
-  section('twitch: DATERANGE classes and the backup probe');
+// Twitch's ad UI, as vaft and Purple look for it, plus the "commercial break" placeholder text
+const AD_UI_SELECTORS = ['[data-a-target="video-ad-label"]', '[data-a-target="video-ad-countdown"]', '.video-ad-label', '[data-test-selector="ad-banner-default-text"]', '[data-a-target="player-ad-notice"]', '[data-a-target="ad-banner-default-text"]', '.stream-display-ad'];
+const AD_UI_TEXT = /commercial break in progress|pausa publicitaria|anuncio en curso/i;
+const STALL_LIMIT_S = 5; // the video still longer than this, not paused, is a stall worth a line
+const AFTER_BREAK_S = 30; // how long a channel is still watched after a break ended
+
+// one sample per second of what the page shows
+async function twitchSample(page) {
+  return page
+    .evaluate(
+      ({ selectors, text }) => {
+        const videos = [...document.querySelectorAll('video')].sort((a, b) => b.clientWidth * b.clientHeight - a.clientWidth * a.clientHeight);
+        const v = videos[0];
+        const t = window.__adblockTwitch || {};
+        const ui = selectors.filter((s) => document.querySelector(s));
+        const player = document.querySelector('[data-a-target="video-player"], .video-player, #root');
+        const placeholder = player && new RegExp(text, 'i').test(player.innerText || '') ? 'text' : null;
+        return {
+          at: Date.now(),
+          t: v ? Math.round(v.currentTime * 10) / 10 : null,
+          paused: v ? v.paused : null,
+          ready: v ? v.readyState : null,
+          videos: videos.length,
+          adUi: [...ui, ...(placeholder ? [placeholder] : [])],
+          workers: t.workers,
+          hooked: t.hookedWorkers,
+          headers: t.gqlHeaders,
+          classes: t.classes,
+          breaks: (t.breaks || []).length,
+          breakEnds: (t.breakEnds || []).length,
+          csai: t.csaiBlocked,
+          restarts: (t.restarts || []).length,
+        };
+      },
+      { selectors: AD_UI_SELECTORS, text: AD_UI_TEXT.source },
+    )
+    .catch((e) => ({ at: Date.now(), error: e.message }));
+}
+
+// the stretches where the video did not move while not paused, from the samples: [{from, to, seconds}]
+function stalls(samples) {
+  const out = [];
+  let run = null;
+  for (let i = 1; i < samples.length; i++) {
+    const a = samples[i - 1];
+    const b = samples[i];
+    const still = a.t != null && b.t != null && b.t === a.t && b.paused === false && a.paused === false;
+    if (still) {
+      if (!run) run = { from: a.at, to: b.at, t: b.t };
+      else run.to = b.at;
+    } else if (run) {
+      out.push({ ...run, seconds: Math.round((run.to - run.from) / 1000) });
+      run = null;
+    }
+  }
+  if (run) out.push({ ...run, seconds: Math.round((run.to - run.from) / 1000) });
+  return out;
+}
+
+async function watchTwitchChannel({ context, sw, login, seconds, blockedAll, requested }) {
   const page = await context.newPage();
   const since = Date.now();
   const blocked = watchBlocked(page);
@@ -250,15 +310,17 @@ async function testTwitch({ context, sw }) {
     const t = m.text();
     if (t.includes('[AdBlock/twitch')) {
       lines.push(t);
-      say('  ' + t.slice(0, 220));
+      say('  ' + t.slice(0, 240));
     }
   });
-  const login = await pickTwitchChannel(context);
-  say(`watching https://www.twitch.tv/${login} for up to ${SECONDS} s`);
+  page.on('request', (r) => requested.add(r.url()));
+  say(`\nwatching https://www.twitch.tv/${login} for up to ${seconds} s (stops ${AFTER_BREAK_S} s after a stitched break ends)`);
   await page.goto(`https://www.twitch.tv/${login}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
   const started = Date.now();
+  const samples = [];
   let lastReport = 0;
-  while (Date.now() - started < SECONDS * 1000) {
+  let lastBreakEnd = null;
+  while (Date.now() - started < seconds * 1000) {
     await sleep(1000);
     // content gates ("Start Watching" for mature content) and the muted-autoplay overlay
     await page
@@ -267,43 +329,96 @@ async function testTwitch({ context, sw }) {
         if (gate) gate.click();
       })
       .catch(() => {});
+    const s = await twitchSample(page);
+    samples.push(s);
+    if (s.adUi && s.adUi.length && !(samples[samples.length - 2] || {}).adUi?.length) say(`  !! ad UI visible at ${Math.round((s.at - started) / 1000)} s: ${s.adUi.join(', ')}`);
+    if (s.breakEnds > 0 && lastBreakEnd === null) lastBreakEnd = s.at;
+    if (s.breaks > s.breakEnds) lastBreakEnd = null; // a break (or the same one again) is running
     if (Date.now() - lastReport > 15000) {
       lastReport = Date.now();
-      const s = await page
-        .evaluate(() => {
-          const v = document.querySelector('video');
-          const t = window.__adblockTwitch || {};
-          return { ready: v ? v.readyState : null, time: v ? Math.round(v.currentTime) : null, paused: v ? v.paused : null, workers: t.workers, hooked: t.hookedWorkers, headers: t.gqlHeaders, classes: t.classes, breaks: (t.breaks || []).length, probes: (t.probes || []).length };
-        })
-        .catch((e) => ({ error: e.message }));
-      say(`  [${Math.round((Date.now() - started) / 1000)} s] video readyState=${s.ready} t=${s.time} paused=${s.paused} | workers=${s.workers} hooked=${s.hooked} gqlHeaders=${JSON.stringify(s.headers)} | classes=${JSON.stringify(s.classes)} breaks=${s.breaks} probes=${s.probes}`);
-      if (s.probes > 0 && Date.now() - started > 30000) break;
+      say(`  [${Math.round((Date.now() - started) / 1000)} s] video t=${s.t} paused=${s.paused} readyState=${s.ready} videos=${s.videos} adUi=${JSON.stringify(s.adUi)} | workers=${s.workers} hooked=${s.hooked} gqlHeaders=${JSON.stringify(s.headers)} | classes=${JSON.stringify(s.classes)} breaks=${s.breaks} ended=${s.breakEnds} restarts=${s.restarts} csai=${JSON.stringify(s.csai)}`);
     }
+    if (lastBreakEnd !== null && Date.now() - lastBreakEnd > AFTER_BREAK_S * 1000) break;
   }
   const final = await page.evaluate(() => window.__adblockTwitch).catch(() => null);
-  const report = { login, seconds: Math.round((Date.now() - started) / 1000), ...(final || {}), consoleLines: lines };
+  const matched = await matchedSince(sw, since);
+  blockedAll.push(...blocked);
+  await page.close();
+  return { login, seconds: Math.round((Date.now() - started) / 1000), started, samples, final, lines, blocked, matched };
+}
+
+async function testTwitch({ context, sw }) {
+  section('twitch: stream swap on stitched breaks, CSAI answered empty, video and ad UI watched');
+  // DNR alone: would the AdGuard rulesets block the client-side ad request? (the page hook answers it first, so this
+  // is asked of the engine directly rather than read from the matches)
+  const dnr = await sw.evaluate(() => globalThis.__adblock.testMatch('https://edge.ads.twitch.tv/ads?bp=midroll&foo=1', 'https://www.twitch.tv', 'xmlhttprequest')).catch((e) => ({ error: e.message }));
+  say(`DNR on edge.ads.twitch.tv (without the page hook): ${dnr.error ? 'could not test: ' + dnr.error : dnr.matchedRules.length ? 'BLOCKED by ' + dnr.matchedRules.map((r) => r.rulesetId + '#' + r.ruleId).join(', ') : 'NOT blocked by any enabled ruleset'}`);
+
+  const wanted = opt('twitch', null);
+  const logins = wanted ? wanted.split(',').map((s) => s.trim()).filter(Boolean) : [await pickTwitchChannel(context)];
+  const blockedAll = [];
+  const requested = new Set();
+  const runs = [];
+  for (const login of logins) {
+    const run = await watchTwitchChannel({ context, sw, login, seconds: SECONDS, blockedAll, requested });
+    runs.push(run);
+    if (run.final && run.final.breakEnds && run.final.breakEnds.length) break; // one complete stitched break is what the check needs
+    say(`  no complete stitched break on ${login} in ${run.seconds} s${logins.indexOf(login) < logins.length - 1 ? ': next channel' : ''}`);
+  }
+
   fs.mkdirSync(path.join(ROOT, '.cache'), { recursive: true });
   const file = path.join(ROOT, '.cache', `twitch-probe-${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
+  const report = { runs: runs.map((r) => ({ ...r, samples: r.samples })), blocked: blockedAll };
   fs.writeFileSync(file, JSON.stringify(report, null, 2));
-  say(`\nDATERANGE classes seen: ${JSON.stringify(final && final.classes)}`);
-  say(`ad breaks seen: ${final ? final.breaks.length : 0}; backup probes run: ${final ? final.probes.length : 0}`);
-  for (const p of (final && final.probes) || []) {
-    say(`probe at ${new Date(p.at).toISOString()} on ${p.channel} (player at ${p.quality}, break ${p.break.rollType || '?'}):`);
-    for (const r of p.results) say(`  ${r.playerType.padEnd(19)} ${r.verdict.padEnd(10)} ${r.quality || ''} ${r.adSegments || ''} ${r.classes || ''} ${r.detail || ''} ${r.token ? 'show_ads=' + r.token.show_ads + ' hide_ads=' + r.token.hide_ads : ''}`);
+
+  // --- the verdicts --------------------------------------------------------------------------------------
+  let verified = false;
+  for (const run of runs) {
+    const f = run.final;
+    if (!f) continue;
+    say(`\n${run.login}: ${run.seconds} s watched, DATERANGE classes ${JSON.stringify(f.classes)}, masters ${f.masters.length}, workers hooked ${f.hookedWorkers}/${f.workers}`);
+    const allStalls = stalls(run.samples);
+    const long = allStalls.filter((s) => s.seconds >= STALL_LIMIT_S);
+    say(`  video: ${run.samples.filter((s) => s.t != null).length} samples, stalls of ${STALL_LIMIT_S} s or more outside and inside breaks: ${long.length}${long.length ? ' (' + long.map((s) => s.seconds + ' s at +' + Math.round((s.from - run.started) / 1000) + ' s').join(', ') + ')' : ''}`);
+    const adUiSamples = run.samples.filter((s) => s.adUi && s.adUi.length);
+    say(`  ad UI of Twitch seen in ${adUiSamples.length} of ${run.samples.length} samples${adUiSamples.length ? ' (' + [...new Set(adUiSamples.flatMap((s) => s.adUi))].join(', ') + ')' : ''}`);
+    say(`  CSAI: ${JSON.stringify(f.csaiBlocked)} answered empty by the page hook; ${run.blocked.filter((u) => u.includes('edge.ads.twitch.tv')).length} requests to edge.ads.twitch.tv blocked by DNR instead`);
+    const adOnNetwork = f.blankUris.filter((u) => requested.has(u));
+    say(`  ad media: ${f.blankUris.length} URI(s) listed for the blank segment, ${f.events.filter((e) => e.type === 'blankAnswered').length} answered blank in the worker, ${adOnNetwork.length} seen on the network by the browser${adOnNetwork.length ? ' !! ' + adOnNetwork.slice(0, 3).join(' | ') : ''}`);
+    const restarts = f.events.filter((e) => e.type === 'sequenceRestart' || e.type === 'stallRestart');
+    if (restarts.length) say(`  restarts: ${restarts.map((e) => e.type + (e.kind ? '/' + e.kind : '') + ' at +' + Math.round((e.at - run.started) / 1000) + ' s').join(', ')}`);
+
+    for (const b of f.breaks) {
+      const end = f.breakEnds.find((e) => e.at === b.at);
+      const windowFrom = b.at - 2000;
+      const windowTo = end ? end.endedAt + AFTER_BREAK_S * 1000 : Date.now();
+      const inWindow = run.samples.filter((s) => s.at >= windowFrom && s.at <= windowTo);
+      const breakStalls = stalls(inWindow);
+      const longest = breakStalls.reduce((m, s) => Math.max(m, s.seconds), 0);
+      const uiIn = inWindow.filter((s) => s.adUi && s.adUi.length).length;
+      const atEnd = end ? run.samples.find((s) => s.at >= end.endedAt) : null;
+      const later = end ? run.samples.find((s) => s.at >= end.endedAt + 10000) : null;
+      const movedAfter = atEnd && later && later.t != null && atEnd.t != null ? Math.round((later.t - atEnd.t) * 10) / 10 : null;
+      say(`\n  STITCHED BREAK at +${Math.round((b.at - run.started) / 1000)} s: roll=${b.rollType || '?'} pod=${b.podLength || '?'} player at ${b.quality || '?'} first poll ${b.adSegments}/${b.segments} ad segments${b.resumed ? ' (resumed)' : ''}`);
+      if (!end) {
+        say(`    still running when the watch ended: NOT a complete sample`);
+        continue;
+      }
+      say(`    ${Math.round(end.durationMs / 1000)} s long, ${end.polls} polls with ad segments: ${end.swapped} answered with a backup playlist, ${end.merged} merged, ${end.blanked} with segments left for the blank segment (${end.blankListed} URI(s) listed)`);
+      say(`    backups used: ${end.backups.map((x) => x.type + '@' + x.quality + (x.shift != null ? ' (seq ' + (x.shift >= 0 ? '+' : '') + x.shift + ')' : '')).join(' > ') || 'NONE'}`);
+      say(`    playlists with ad segments fetched by the player from Twitch: ${adOnNetwork.length} ad URI(s) on the network ${adOnNetwork.length ? '!!' : '(none)'}`);
+      say(`    video during the break and ${AFTER_BREAK_S} s after: longest still stretch ${longest} s${longest >= STALL_LIMIT_S ? ' !!' : ''}; ad UI in ${uiIn} of ${inWindow.length} samples${uiIn ? ' !!' : ''}`);
+      say(`    after the break: currentTime moved ${movedAfter == null ? '(no sample)' : movedAfter + ' s in 10 s'}${movedAfter != null && movedAfter < 5 ? ' !!' : ''}`);
+      const ok = adOnNetwork.length === 0 && longest < STALL_LIMIT_S && uiIn === 0 && movedAfter != null && movedAfter >= 5 && end.swapped + end.merged > 0;
+      say(`    => ${ok ? 'BLOCKED: the player got clean playlists, kept playing and showed no ad UI' : 'NOT CLEAN: see the !! lines above'}`);
+      verified = verified || ok;
+    }
+    if (!f.breaks.length) say(`  no stitched break on this channel: the swap was not exercised here`);
   }
-  if (!final || !final.breaks.length) say('NO ad break was seen in this run: the probe could not be exercised (DATERANGE classes above are what the player saw).');
-  // client-side ads (CSAI): the page asks edge.ads.twitch.tv during a twitch-maf-ad window; the generic rulesets may already block that
-  const matched = await matchedSince(sw, since);
-  const twitchAds = matched.filter((m) => /twitch\.tv|ttvnw\.net|twitchcdn\.net|amazon-adsystem|doubleclick/.test(m.url));
-  const edgeAds = blocked.filter((u) => u.includes('edge.ads.twitch.tv'));
-  // DNR "matches" include allow rules (the Base allows twitch.tv websockets): blocked.length is what was actually blocked
-  say(`network: ${blocked.length} requests blocked by the client (${edgeAds.length} to edge.ads.twitch.tv), DNR matches (block or allow) on twitch-related hosts: ${twitchAds.length} ${twitchAds.slice(0, 5).map((m) => m.url.replace(/^https?:\/\//, '').slice(0, 70) + ' [' + m.ruleset + ']').join(' | ')}`);
-  report.blocked = blocked;
-  report.dnrMatches = twitchAds;
-  fs.writeFileSync(file, JSON.stringify(report, null, 2));
+  if (!runs.some((r) => r.final && r.final.breaks.length)) say('\nNO stitched ad break was seen in this run: the blocking is NOT verified (DATERANGE classes above are what the player saw).');
+  else if (!verified) say('\nA stitched break was seen but the checks did not all pass: the blocking is NOT verified.');
   say(`report written to ${file}`);
-  await page.close();
-  return report;
+  return { verified, runs: runs.length };
 }
 
 // ---------------------------------------------------------------------------------------------------------

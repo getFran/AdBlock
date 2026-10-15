@@ -34,4 +34,10 @@ chrome.runtime.onInstalled.addListener(() => {
   report().catch((e) => console.error('[AdBlock] report failed', e));
 });
 
-globalThis.__adblock = { matched, report };
+// Would the enabled rulesets act on this request? Asked of the engine directly (test/verify.mjs uses it for
+// edge.ads.twitch.tv, which the Twitch page hook answers before any request is made).
+function testMatch(url, initiator, type) {
+  return chrome.declarativeNetRequest.testMatchOutcome({ url, initiator, type: type || 'xmlhttprequest', method: 'get' });
+}
+
+globalThis.__adblock = { matched, report, testMatch };
