@@ -131,6 +131,7 @@
     gqlHeaders: {},
     gqlPending: new Map(),
     gqlNext: 1,
+    recent: [], // the last playlist texts seen (player polls, backups, what was delivered): the evidence of a break
   };
 
   const post = (message) => {
@@ -145,6 +146,11 @@
     post({ adblock: 'log', args: args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a))) });
   };
   const emit = (type, data) => post({ adblock: 'event', event: { type, at: Date.now(), ...(data || {}) } });
+  const RECENT_KEEP = 80;
+  const remember = (kind, url, text) => {
+    state.recent.push({ at: Date.now(), kind, url: String(url).slice(0, 160), text });
+    if (state.recent.length > RECENT_KEEP) state.recent.splice(0, state.recent.length - RECENT_KEEP);
+  };
 
   // messages from the page (only ours; the player's RPC uses other funcNames)
   scope.addEventListener('message', (event) => {
@@ -158,6 +164,24 @@
         state.gqlPending.delete(data.value.id);
         done(data.value);
       }
+    } else if (data.funcName === 'adblockDump') {
+      // the page is writing a record: this worker's state and its recent playlists
+      post({
+        adblock: 'dump',
+        name: data.name,
+        dump: {
+          channel: state.channel,
+          quality: state.quality,
+          pinnedType: state.pinnedType,
+          adState: state.adState,
+          backups: [...state.backups.keys()],
+          contaminated: [...state.contaminatedUntil.entries()],
+          polls: state.polls,
+          blankAnswered: state.blankAnswered,
+          delivered: state.delivered,
+          recent: state.recent,
+        },
+      });
     }
   });
 
@@ -784,6 +808,7 @@
       state.backups.delete(type);
       return { type, data: null, dump: [], contaminated: false, verdict: 'error', detail: String((e && e.message) || e).slice(0, 100), variant };
     }
+    remember('backup:' + type, variant.url, text);
     if (!isCleanBackup(text)) {
       // T-204: a backup announcing its own break is dropped like one with ads; its live segments still serve the merge
       state.backups.delete(type);
@@ -911,7 +936,7 @@
   function endBreak(now) {
     const b = state.break;
     if (!b) return;
-    const info = { ...b, endedAt: now, durationMs: now - b.at, blankAnswered: state.blankAnswered };
+    const info = { ...b, endedAt: now, durationMs: now - b.at, blankAnswered: state.blankAnswered, playlists: state.recent.filter((r) => r.at >= b.at - 10000) };
     log('AD BREAK over after ' + Math.round(info.durationMs / 1000) + ' s: polls=' + b.polls + ' swapped=' + b.swapped + ' merged=' + b.merged + ' blanked=' + b.blanked + ' (uris listed ' + b.blankListed + ', answered blank so far ' + state.blankAnswered + ') backups=' + (b.backups.map((x) => x.type + '@' + x.quality).join(' > ') || 'none'));
     post({ adblock: 'break-end', info });
   }
@@ -1088,11 +1113,13 @@
     if (!response.ok) return response;
     const text = await response.text();
     if (!text.startsWith('#EXTM3U')) return new Response(text, responseInit(response));
+    remember('player', url, text);
     let out = text;
     try {
       const current = state.playerVariants.get(withoutQuery(url));
       if (current) state.quality = current.name;
       out = await onFetch(text, url);
+      if (out !== text) remember('delivered', url, out);
     } catch (e) {
       // a failure in the blocking logic must not stop the player: it gets Twitch's playlist
       log('blocking logic failed, playlist passed through: ' + ((e && e.stack) || e));

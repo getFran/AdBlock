@@ -40,4 +40,35 @@ function testMatch(url, initiator, type) {
   return chrome.declarativeNetRequest.testMatchOutcome({ url, initiator, type: type || 'xmlhttprequest', method: 'get' });
 }
 
-globalThis.__adblock = { matched, report, testMatch };
+// Records from the Twitch page script (relayed by twitch-bridge.js): written to Downloads/AdBlock/<name> so that a
+// session can read them later. A data URL keeps this inside the service worker (no blob URLs here); the page caps
+// the record well under Chrome's URL limit.
+const saves = [];
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (!message || message.type !== 'save') return false;
+  const name = String(message.name || 'record.json').replace(/[^\w.-]/g, '_');
+  const url = 'data:application/json;base64,' + btoa(unescape(encodeURIComponent(String(message.json || ''))));
+  chrome.downloads
+    .download({ url, filename: 'AdBlock/' + name, conflictAction: 'uniquify', saveAs: false })
+    .then((id) => {
+      saves.push({ name, id, at: Date.now(), bytes: String(message.json || '').length });
+      if (saves.length > 100) saves.splice(0, saves.length - 100);
+      console.log('[AdBlock] Twitch record saved: Downloads/AdBlock/' + name);
+      sendResponse({ ok: true, id });
+    })
+    .catch((e) => {
+      console.error('[AdBlock] Twitch record NOT saved:', name, e);
+      sendResponse({ ok: false, error: String(e) });
+    });
+  return true;
+});
+
+// test/verify.mjs: the state of a record's download, by the name the page gave it
+async function downloadState(name) {
+  const save = saves.find((s) => s.name === name);
+  if (!save) return { known: false };
+  const [item] = await chrome.downloads.search({ id: save.id });
+  return item ? { known: true, state: item.state, bytes: item.totalBytes, filename: item.filename, error: item.error } : { known: true, state: 'gone' };
+}
+
+globalThis.__adblock = { matched, report, testMatch, saves, downloadState };

@@ -342,6 +342,20 @@ async function watchTwitchChannel({ context, sw, login, seconds, blockedAll, req
   }
   const final = await page.evaluate(() => window.__adblockTwitch).catch(() => null);
   const matched = await matchedSince(sw, since);
+  // the record the extension writes to Downloads/AdBlock/ when an ad gets through: asked by hand here, and its download checked
+  const savedName = await page.evaluate(() => (window.__adblockTwitch && window.__adblockTwitch.save ? window.__adblockTwitch.save('verify') : null)).catch(() => null);
+  await sleep(3000);
+  const download = savedName ? await sw.evaluate((name) => globalThis.__adblock.downloadState(name), savedName).catch((e) => ({ error: e.message })) : null;
+  say(`  record: ${savedName ? savedName + ' -> ' + JSON.stringify(download) : 'save() not available on the page'}`);
+  if (download && download.state === 'complete' && download.filename && fs.existsSync(download.filename)) {
+    try {
+      const r = JSON.parse(fs.readFileSync(download.filename, 'utf8'));
+      const w = r.worker || {};
+      say(`  record content: version ${r.version}, ${r.samples.length} samples, ${r.log.length} log lines, ${r.events.length} events, ${r.breakEnds.length} break(s), worker ${w.channel ? w.channel + '@' + w.quality + ' backups=' + (w.backups || []).join(',') + ' recent playlists=' + (w.recent || []).length : 'NONE'}`);
+    } catch (e) {
+      say(`  record content: could not read (${e.message})`);
+    }
+  }
   blockedAll.push(...blocked);
   await page.close();
   return { login, seconds: Math.round((Date.now() - started) / 1000), started, samples, final, lines, blocked, matched };

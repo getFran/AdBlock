@@ -386,7 +386,9 @@ async function buildTwitch() {
     logLevel: 'warning',
   });
   const code = worker.outputFiles[0].text;
-  await bundle('src/twitch/page.js', 'twitch.js', { define: { __WORKER_CODE__: JSON.stringify(code) } });
+  await bundle('src/twitch/page.js', 'twitch.js', { define: { __WORKER_CODE__: JSON.stringify(code), __EXT_VERSION__: JSON.stringify(EXT_VERSION) } });
+  // ISOLATED world: relays the page's records to the service worker (chrome.downloads)
+  await bundle('src/twitch/bridge.js', 'twitch-bridge.js');
   log(`twitch: worker hook ${code.length} bytes inlined into twitch.js`);
 }
 
@@ -398,7 +400,8 @@ function writeManifest({ resources }) {
     version: EXT_VERSION,
     description: `Ad blocking shell: AdGuard DNR rulesets ${PKG_VERSION}, cosmetic CSS, YouTube scriptlets, Twitch worker hook. Personal build, loaded unpacked.`,
     minimum_chrome_version: '128',
-    permissions: ['declarativeNetRequest', 'declarativeNetRequestFeedback'],
+    // downloads: the Twitch records written to Downloads/AdBlock/ (src/background.js)
+    permissions: ['declarativeNetRequest', 'declarativeNetRequestFeedback', 'downloads'],
     host_permissions: ['<all_urls>'],
     background: { service_worker: 'background.js' },
     declarative_net_request: { rule_resources: resources },
@@ -406,6 +409,7 @@ function writeManifest({ resources }) {
       { matches: ['http://*/*', 'https://*/*'], js: ['cosmetic/runtime.js'], run_at: 'document_start', all_frames: true, match_origin_as_fallback: true },
       { matches: hostPatterns(config.youtube.hosts), js: ['youtube.js'], run_at: 'document_start', all_frames: true, world: 'MAIN' },
       { matches: hostPatterns(config.twitch.hosts), js: ['twitch.js'], run_at: 'document_start', world: 'MAIN' },
+      { matches: hostPatterns(config.twitch.hosts), js: ['twitch-bridge.js'], run_at: 'document_start' },
     ],
     // the cosmetic runtime fetches its domain's bucket from the extension package
     web_accessible_resources: [{ resources: ['cosmetic/bucket-*.json'], matches: ['<all_urls>'] }],

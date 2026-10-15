@@ -29,6 +29,14 @@ const GQL_HEADERS = ['Client-Integrity', 'X-Device-Id', 'Authorization', 'Client
 const ALIASES = { 'X-Device-Id': ['Device-ID'] };
 const STALL_MS = 6000; // the video still this long after a break, not paused: a restart
 const WATCH_MS = 30000; // how long after a break's end the guard watches
+const SAMPLE_KEEP = 900; // 15 min of one sample per second: video position, paused, readyState, ad UI
+const AD_UI_RUN = 3; // Twitch's ad UI seen this many samples in a row makes a record
+const SAVE_AFTER_BREAK_MS = 20000; // the record of a break waits for what the player does after it
+const SAVE_MIN_GAP_MS = 60000; // at most one automatic record per minute
+const DUMP_TIMEOUT_MS = 1500; // how long a record waits for the worker's playlists
+const RECORD_MAX_BYTES = 1200000; // the record travels as a data URL to chrome.downloads; Chrome's URL limit is 2 MB
+// Twitch's ad UI, as vaft and Purple look for it
+const AD_UI_SELECTORS = ['[data-a-target="video-ad-label"]', '[data-a-target="video-ad-countdown"]', '.video-ad-label', '[data-test-selector="ad-banner-default-text"]', '[data-a-target="player-ad-notice"]', '[data-a-target="ad-banner-default-text"]', '.stream-display-ad'];
 
 (function () {
   if (window.__adblockTwitch) return;
@@ -44,6 +52,9 @@ const WATCH_MS = 30000; // how long after a break's end the guard watches
     blankUris: [],
     csaiBlocked: {},
     restarts: [],
+    samples: [],
+    saves: [],
+    version: __EXT_VERSION__,
     log: [],
   });
   const originalFetch = window.fetch;
@@ -301,6 +312,102 @@ const WATCH_MS = 30000; // how long after a break's end the guard watches
     }, 1000);
   }
 
+  // --- the record: what a session reads when an ad got through ---------------------------------------------
+  // One sample per second of the main video and of Twitch's ad UI; a record when a stitched break ended (20 s later,
+  // with what the player did after it), when the ad UI stays visible, or by hand (window.__adblockTwitch.save()).
+  // It goes to Downloads/AdBlock/<name>.json through twitch-bridge.js and the service worker.
+  let adUiRun = 0;
+  function sample() {
+    try {
+      const v = mainVideo();
+      const adUi = AD_UI_SELECTORS.filter((s) => document.querySelector(s));
+      state.samples.push({ at: Date.now(), t: v ? Math.round(v.currentTime * 10) / 10 : null, paused: v ? v.paused : null, ready: v ? v.readyState : null, adUi });
+      if (state.samples.length > SAMPLE_KEEP) state.samples.splice(0, state.samples.length - SAMPLE_KEEP);
+      if (adUi.length) {
+        adUiRun++;
+        if (adUiRun === AD_UI_RUN) {
+          log('Twitch ad UI visible: ' + adUi.join(', '));
+          emit('adUi', { selectors: adUi });
+          save('ad-ui');
+        }
+      } else {
+        adUiRun = 0;
+      }
+    } catch {
+      // never from a timer
+    }
+  }
+
+  let lastSave = -Infinity;
+  const pendingDumps = new Map(); // record name -> { finish, fallback }
+  function save(reason) {
+    const now = Date.now();
+    if (reason !== 'manual' && reason !== 'verify' && now - lastSave < SAVE_MIN_GAP_MS) return null;
+    lastSave = now;
+    const name = 'twitch-' + new Date(now).toISOString().replace(/[:.]/g, '-') + '-' + reason + '.json';
+    const finish = (dump) => {
+      const record = {
+        name,
+        reason,
+        at: new Date(now).toISOString(),
+        url: location.href,
+        version: state.version,
+        userAgent: navigator.userAgent,
+        workers: state.workers,
+        hookedWorkers: state.hookedWorkers,
+        gqlHeaders: state.gqlHeaders,
+        classes: state.classes,
+        masters: state.masters,
+        breaks: state.breaks,
+        breakEnds: state.breakEnds,
+        events: state.events.slice(-500),
+        blankUris: state.blankUris,
+        csaiBlocked: state.csaiBlocked,
+        restarts: state.restarts,
+        samples: state.samples,
+        worker: dump || null,
+        log: state.log.slice(-1500),
+      };
+      let json = JSON.stringify(record);
+      if (json.length > RECORD_MAX_BYTES && record.worker && record.worker.recent) {
+        // the playlists are the bulk: the oldest go first
+        while (json.length > RECORD_MAX_BYTES && record.worker.recent.length > 10) {
+          record.worker.recent.shift();
+          json = JSON.stringify(record);
+        }
+      }
+      if (json.length > RECORD_MAX_BYTES) {
+        record.breakEnds = record.breakEnds.map((b) => ({ ...b, playlists: (b.playlists || []).slice(-10) }));
+        record.log = record.log.slice(-300);
+        record.samples = record.samples.slice(-300);
+        json = JSON.stringify(record);
+      }
+      window.postMessage({ source: 'adblock-twitch', type: 'save', name, json }, location.origin);
+      state.saves.push({ at: now, reason, name, bytes: json.length });
+      log('record ' + name + ' sent to Downloads/AdBlock/ (' + reason + ', ' + Math.round(json.length / 1024) + ' KB)');
+    };
+    // the main player's worker answers with playlists; an idle worker answers with none and is kept as the fallback
+    const pending = { fallback: null };
+    const timer = setTimeout(() => {
+      if (pendingDumps.delete(name)) finish(pending.fallback);
+    }, DUMP_TIMEOUT_MS);
+    pending.finish = (dump) => {
+      clearTimeout(timer);
+      pendingDumps.delete(name);
+      finish(dump);
+    };
+    pendingDumps.set(name, pending);
+    let asked = 0;
+    for (const w of workers) {
+      if (w.__adblock && w.__adblock.started) {
+        w.sendFromAdblock({ funcName: 'adblockDump', name });
+        asked++;
+      }
+    }
+    if (!asked) pending.finish(null);
+    return name;
+  }
+
   function onWorkerMessage(worker, event) {
     const data = event && event.data;
     if (!data || typeof data !== 'object' || !data.adblock) return;
@@ -330,7 +437,15 @@ const WATCH_MS = 30000; // how long after a break's end the guard watches
       case 'break-end':
         state.breakEnds.push(data.info);
         guardAfterBreak(worker, data.info);
+        setTimeout(() => save('break'), SAVE_AFTER_BREAK_MS);
         break;
+      case 'dump': {
+        const pending = pendingDumps.get(data.name);
+        if (!pending) break;
+        if (data.dump && data.dump.recent && data.dump.recent.length) pending.finish(data.dump);
+        else pending.fallback = pending.fallback || data.dump || null;
+        break;
+      }
       case 'blank':
         for (const uri of data.uris || []) if (!state.blankUris.includes(uri)) state.blankUris.push(uri);
         if (state.blankUris.length > 500) state.blankUris.splice(0, state.blankUris.length - 500);
@@ -409,6 +524,9 @@ const WATCH_MS = 30000; // how long after a break's end the guard watches
     }
   }
   window.Worker = HookedWorker;
+
+  state.save = (reason) => save(reason || 'manual');
+  setInterval(sample, 1000);
 
   log('page hook installed');
 })();
