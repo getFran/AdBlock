@@ -1,20 +1,35 @@
-# Bloqueador de anuncios para Chrome (Twitch y YouTube)
+# AdBlock — bloqueador de anuncios para Chrome (Twitch y YouTube)
 
-Una extensión de Chrome (Manifest V3) que **bloquea anuncios en cualquier web** con listas de filtros tipo EasyList y que **trata aparte Twitch y YouTube**, donde los bloqueadores genéricos fallan porque el anuncio va cosido en el propio vídeo (Twitch) o protegido por detección y contramedidas (YouTube). En palabras de Fran: "bloquear todos los anuncios de páginas web, sobre todo me interesa para Twitch y YouTube". Solo para él: cargada descomprimida en modo desarrollador, sin publicar en la Chrome Web Store. Situación de partida comprobada: uBlock Origin (MV2) ya no se puede cargar en Chrome estable por ningún flag (deshabilitado para todos en Chrome 138, julio de 2025; borrado de la store el 2026-08-31), y uBlock Origin Lite declara en su FAQ que no bloquea de forma fiable los anuncios de vídeo de Twitch.
+Extensión de Chrome (Manifest V3) que bloquea anuncios en cualquier web con las listas de AdGuard y
+trata aparte YouTube (poda del player response) y Twitch (hook del worker del player). Es una
+**carcasa**: los rulesets, los scriptlets y los argumentos vienen de piezas que mantienen otros
+(`@adguard/dnr-rulesets`, `@adguard/scriptlets`, uAssets, Purple Ads Blocker) y una rotura se
+arregla con un build, no investigando. Solo para el Chrome de Fran, cargada descomprimida.
 
-Scaffold generado por ProjectKit el 2026-10-15 a partir del croquis
-`ProjectKit/ideas/bloqueador-de-anuncios-para-chrome-twitch-y-youtube.md`.
+Croquis y motivación: `ProjectKit/ideas/bloqueador-de-anuncios-para-chrome-twitch-y-youtube.md`.
 
-## Estado
+## Uso
 
-Repo recién creado con la plantilla `blank`: stack técnico sin decidir. No es un servicio de
-`dockerhost` — no tiene `docker-compose.yml`, ni stack de Portainer, ni puerto asignado.
+```
+npm install
+npm run build        # -> dist/
+```
 
-## Siguiente paso
+En `chrome://extensions`: modo desarrollador → "Load unpacked" → la carpeta `dist/`. Actualizar
+listas = `npm install @adguard/dnr-rulesets@latest @adguard/scriptlets@latest && npm run vendor &&
+npm run build` y recargar la extensión.
 
-Abre una sesión en esta carpeta y decide lenguaje, toolchain y forma de entrega (ejecutable,
-CLI, extensión, cliente+servidor). El `CLAUDE.md` de este repo lleva la lista de lo que hay que
-acordar antes de escribir código.
+Verificación en páginas reales (Chromium de Playwright, perfil nuevo cada vez):
 
-> Repo privado: si en algún momento lleva credenciales en un `.env` committeado (la convención
-> del homelab), **debe seguir siéndolo**.
+```
+npm run verify -- generic      # marca.com, elmundo.es, as.com: peticiones bloqueadas + hojas cosméticas
+npm run verify -- youtube      # player response sin adPlacements, 25 s sin UI de anuncio, navegación interna
+npm run verify -- twitch       # sonda: clases DATERANGE y, si hay corte, qué player_type llega limpio
+```
+
+## Estado (2026-10-15)
+
+- Genérico y YouTube: funcionando y verificados.
+- Twitch: solo la sonda. El bloqueo se decide con el dato que dé (`CLAUDE.md`, sección Twitch).
+
+> Repo privado y debe seguir siéndolo.

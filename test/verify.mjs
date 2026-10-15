@@ -37,8 +37,18 @@ if (!fs.existsSync(path.join(DIST, 'manifest.json'))) {
 }
 
 async function launch(profile) {
-  const userDataDir = path.join(ROOT, 'test', 'profiles', profile);
-  if (!flag('keep-profile')) fs.rmSync(userDataDir, { recursive: true, force: true });
+  const profiles = path.join(ROOT, 'test', 'profiles');
+  const userDataDir = flag('keep-profile') ? path.join(profiles, profile) : path.join(profiles, `${profile}-${Date.now()}`);
+  // best effort: a profile still locked by a browser that did not exit stays on disk
+  for (const old of fs.existsSync(profiles) ? fs.readdirSync(profiles) : []) {
+    if (old !== path.basename(userDataDir) && !flag('keep-profile')) {
+      try {
+        fs.rmSync(path.join(profiles, old), { recursive: true, force: true });
+      } catch {
+        say(`(could not remove old profile ${old}: still in use)`);
+      }
+    }
+  }
   fs.mkdirSync(userDataDir, { recursive: true });
   const context = await chromium.launchPersistentContext(userDataDir, {
     channel: CHANNEL,
@@ -230,9 +240,11 @@ async function pickTwitchChannel(context) {
   return edges[0].node.broadcaster.login;
 }
 
-async function testTwitch({ context }) {
+async function testTwitch({ context, sw }) {
   section('twitch: DATERANGE classes and the backup probe');
   const page = await context.newPage();
+  const since = Date.now();
+  const blocked = watchBlocked(page);
   const lines = [];
   page.on('console', (m) => {
     const t = m.text();
@@ -280,6 +292,15 @@ async function testTwitch({ context }) {
     for (const r of p.results) say(`  ${r.playerType.padEnd(19)} ${r.verdict.padEnd(10)} ${r.quality || ''} ${r.adSegments || ''} ${r.classes || ''} ${r.detail || ''} ${r.token ? 'show_ads=' + r.token.show_ads + ' hide_ads=' + r.token.hide_ads : ''}`);
   }
   if (!final || !final.breaks.length) say('NO ad break was seen in this run: the probe could not be exercised (DATERANGE classes above are what the player saw).');
+  // client-side ads (CSAI): the page asks edge.ads.twitch.tv during a twitch-maf-ad window; the generic rulesets may already block that
+  const matched = await matchedSince(sw, since);
+  const twitchAds = matched.filter((m) => /twitch\.tv|ttvnw\.net|twitchcdn\.net|amazon-adsystem|doubleclick/.test(m.url));
+  const edgeAds = blocked.filter((u) => u.includes('edge.ads.twitch.tv'));
+  // DNR "matches" include allow rules (the Base allows twitch.tv websockets): blocked.length is what was actually blocked
+  say(`network: ${blocked.length} requests blocked by the client (${edgeAds.length} to edge.ads.twitch.tv), DNR matches (block or allow) on twitch-related hosts: ${twitchAds.length} ${twitchAds.slice(0, 5).map((m) => m.url.replace(/^https?:\/\//, '').slice(0, 70) + ' [' + m.ruleset + ']').join(' | ')}`);
+  report.blocked = blocked;
+  report.dnrMatches = twitchAds;
+  fs.writeFileSync(file, JSON.stringify(report, null, 2));
   say(`report written to ${file}`);
   await page.close();
   return report;
