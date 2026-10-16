@@ -42,7 +42,10 @@ alcance (carcasa que consume piezas mantenidas por otros), no con otro.
   hace Purple en el merge. Fuera de un corte las playlists llegan al player sin tocar. **Ni recorte de
   segmentos ni proxies.** Pause/play solo si hace falta: cuando el número de secuencia retrocede al
   cambiar de fuente (F-24 de Purple) y, desde la página, si el vídeo lleva 6 s parado tras el corte
-  (pause/play y, si sigue, reload suave). El anuncio client-side (`twitch-maf-ad`) se corta respondiendo
+  (pause/play y, si sigue, reload suave); desde el 2026-10-16 el guardián vigila desde el primer poll con
+  anuncio hasta 60 s después del fin y cuenta como parado también que los **fotogramas decodificados**
+  (`getVideoPlaybackQuality`) dejen de crecer con el reloj corriendo, que es lo que Fran vio como
+  "congelado hasta F5". El anuncio client-side (`twitch-maf-ad`) se corta respondiendo
   vacío a `edge.ads.twitch.tv` desde `fetch` y XHR de la página; el Base de AdGuard ya lo bloquea por DNR
   (`||edge.ads.twitch.tv^`, la prueba lo imprime con `testMatchOutcome`) y esto es la segunda capa. Como
   Purple, el master `picture-by-picture` que pide la página se responde vacío y dispara el prewarm de
@@ -154,10 +157,13 @@ sin `adPlacements` (sin la extensión trae 1), no "no vi anuncio".
 
 **Un corte cosido no se puede provocar:** sale cuando Twitch lo mete (en `auronplay` tardó 5 min el
 2026-10-15 por la mañana; esa misma tarde, 2 h 20 min y 23 cargas sin ninguno). Si en la pasada no sale
-ninguno, la prueba lo dice tal cual; hay que repetir con otros canales grandes (`--twitch=a,b,c`). **El
-intercambio está verificado en vivo con un midroll real** (2026-10-16, pausenpaii, 45 s, 25/25 polls a
-1080p60 sin parón ni UI de anuncio; memoria `twitch-intercambio-verificado-primer-midroll-real`); falta
-ver un PREROLL de carga, donde Purple avisa de que los backups traen su propio preroll.
+ninguno, la prueba lo dice tal cual; hay que repetir con otros canales grandes (`--twitch=a,b,c`). **Primer
+midroll real el 2026-10-16** (pausenpaii, 45 s): las playlists salieron limpias (25/25 polls con backup a
+1080p60) y el reloj del vídeo corrió, pero **Fran vio la imagen congelada hasta pulsar F5**: el reloj lo
+lleva el audio, así que `currentTime` no detecta un decodificador de vídeo atascado. Por eso las muestras
+llevan `frames` y el guardián reinicia también por imagen parada, y `verify` cuenta "picture frozen" como
+fallo (memoria `twitch-intercambio-verificado-primer-midroll-real`, con la hipótesis del `DISCONTINUITY`
+colgante y la siguiente si repite). Falta ver un PREROLL de carga.
 
 **Al limpiar navegadores de prueba colgados, nunca `taskkill //IM chrome.exe`:** mata el Chrome de
 Fran (memoria `no-matar-chrome-por-nombre-de-imagen` en `PyCharm Projects`).

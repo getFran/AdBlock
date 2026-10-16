@@ -278,6 +278,7 @@ async function twitchSample(page) {
       ({ selectors, text }) => {
         const videos = [...document.querySelectorAll('video')].sort((a, b) => b.clientWidth * b.clientHeight - a.clientWidth * a.clientHeight);
         const v = videos[0];
+        const q = v && v.getVideoPlaybackQuality ? v.getVideoPlaybackQuality() : null;
         const t = window.__adblockTwitch || {};
         const ui = selectors.filter((s) => document.querySelector(s));
         const player = document.querySelector('[data-a-target="video-player"], .video-player, #root');
@@ -287,6 +288,7 @@ async function twitchSample(page) {
           t: v ? Math.round(v.currentTime * 10) / 10 : null,
           paused: v ? v.paused : null,
           ready: v ? v.readyState : null,
+          frames: q ? q.totalVideoFrames : null,
           videos: videos.length,
           adUi: [...ui, ...(placeholder ? [placeholder] : [])],
           workers: t.workers,
@@ -304,14 +306,15 @@ async function twitchSample(page) {
     .catch((e) => ({ at: Date.now(), error: e.message }));
 }
 
-// the stretches where the video did not move while not paused, from the samples: [{from, to, seconds}]
-function stalls(samples) {
+// the stretches where the video did not move while not paused, from the samples: [{from, to, seconds}].
+// key 't' is the clock (currentTime); 'frames' the decoded frames: a picture frozen while the clock runs
+function stalls(samples, key = 't') {
   const out = [];
   let run = null;
   for (let i = 1; i < samples.length; i++) {
     const a = samples[i - 1];
     const b = samples[i];
-    const still = a.t != null && b.t != null && b.t === a.t && b.paused === false && a.paused === false;
+    const still = a[key] != null && b[key] != null && b[key] === a[key] && b.paused === false && a.paused === false;
     if (still) {
       if (!run) run = { from: a.at, to: b.at, t: b.t };
       else run.to = b.at;
@@ -416,7 +419,8 @@ async function testTwitch({ context, sw }) {
     say(`\n${run.login}: ${run.seconds} s watched, DATERANGE classes ${JSON.stringify(f.classes)}, masters ${f.masters.length}, workers hooked ${f.hookedWorkers}/${f.workers}`);
     const allStalls = stalls(run.samples);
     const long = allStalls.filter((s) => s.seconds >= STALL_LIMIT_S);
-    say(`  video: ${run.samples.filter((s) => s.t != null).length} samples, stalls of ${STALL_LIMIT_S} s or more outside and inside breaks: ${long.length}${long.length ? ' (' + long.map((s) => s.seconds + ' s at +' + Math.round((s.from - run.started) / 1000) + ' s').join(', ') + ')' : ''}`);
+    const frozen = stalls(run.samples, 'frames').filter((s) => s.seconds >= STALL_LIMIT_S);
+    say(`  video: ${run.samples.filter((s) => s.t != null).length} samples, clock stalls of ${STALL_LIMIT_S} s or more: ${long.length}${long.length ? ' (' + long.map((s) => s.seconds + ' s at +' + Math.round((s.from - run.started) / 1000) + ' s').join(', ') + ')' : ''}; picture frozen (no new frames) ${STALL_LIMIT_S} s or more: ${frozen.length}${frozen.length ? ' (' + frozen.map((s) => s.seconds + ' s at +' + Math.round((s.from - run.started) / 1000) + ' s').join(', ') + ') !!' : ''}`);
     const adUiSamples = run.samples.filter((s) => s.adUi && s.adUi.length);
     say(`  ad UI of Twitch seen in ${adUiSamples.length} of ${run.samples.length} samples${adUiSamples.length ? ' (' + [...new Set(adUiSamples.flatMap((s) => s.adUi))].join(', ') + ')' : ''}`);
     say(`  CSAI: ${JSON.stringify(f.csaiBlocked)} answered empty by the page hook; ${run.blocked.filter((u) => u.includes('edge.ads.twitch.tv')).length} requests to edge.ads.twitch.tv blocked by DNR instead`);
@@ -432,6 +436,7 @@ async function testTwitch({ context, sw }) {
       const inWindow = run.samples.filter((s) => s.at >= windowFrom && s.at <= windowTo);
       const breakStalls = stalls(inWindow);
       const longest = breakStalls.reduce((m, s) => Math.max(m, s.seconds), 0);
+      const longestFrozen = stalls(inWindow, 'frames').reduce((m, s) => Math.max(m, s.seconds), 0);
       const uiIn = inWindow.filter((s) => s.adUi && s.adUi.length).length;
       const atEnd = end ? run.samples.find((s) => s.at >= end.endedAt) : null;
       const later = end ? run.samples.find((s) => s.at >= end.endedAt + 10000) : null;
@@ -444,9 +449,9 @@ async function testTwitch({ context, sw }) {
       say(`    ${Math.round(end.durationMs / 1000)} s long, ${end.polls} polls with ad segments: ${end.swapped} answered with a backup playlist, ${end.merged} merged, ${end.blanked} with segments left for the blank segment (${end.blankListed} URI(s) listed)`);
       say(`    backups used: ${end.backups.map((x) => x.type + '@' + x.quality + (x.shift != null ? ' (seq ' + (x.shift >= 0 ? '+' : '') + x.shift + ')' : '')).join(' > ') || 'NONE'}`);
       say(`    playlists with ad segments fetched by the player from Twitch: ${adOnNetwork.length} ad URI(s) on the network ${adOnNetwork.length ? '!!' : '(none)'}`);
-      say(`    video during the break and ${AFTER_BREAK_S} s after: longest still stretch ${longest} s${longest >= STALL_LIMIT_S ? ' !!' : ''}; ad UI in ${uiIn} of ${inWindow.length} samples${uiIn ? ' !!' : ''}`);
+      say(`    video during the break and ${AFTER_BREAK_S} s after: longest clock stall ${longest} s${longest >= STALL_LIMIT_S ? ' !!' : ''}, longest frozen picture ${longestFrozen} s${longestFrozen >= STALL_LIMIT_S ? ' !!' : ''}; ad UI in ${uiIn} of ${inWindow.length} samples${uiIn ? ' !!' : ''}`);
       say(`    after the break: currentTime moved ${movedAfter == null ? '(no sample)' : movedAfter + ' s in 10 s'}${movedAfter != null && movedAfter < 5 ? ' !!' : ''}`);
-      const ok = adOnNetwork.length === 0 && longest < STALL_LIMIT_S && uiIn === 0 && movedAfter != null && movedAfter >= 5 && end.swapped + end.merged > 0;
+      const ok = adOnNetwork.length === 0 && longest < STALL_LIMIT_S && longestFrozen < STALL_LIMIT_S && uiIn === 0 && movedAfter != null && movedAfter >= 5 && end.swapped + end.merged > 0;
       say(`    => ${ok ? 'BLOCKED: the player got clean playlists, kept playing and showed no ad UI' : 'NOT CLEAN: see the !! lines above'}`);
       verified = verified || ok;
     }

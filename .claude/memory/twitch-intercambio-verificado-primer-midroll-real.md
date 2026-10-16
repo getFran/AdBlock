@@ -1,6 +1,6 @@
 ---
 name: twitch-intercambio-verificado-primer-midroll-real
-description: Primer corte cosido real con el intercambio de stream activo en el Chrome de Fran (2026-10-16 13:51, pausenpaii, MIDROLL de 45 s, 25 polls con anuncio): los 25 se sirvieron con la playlist de un backup limpio a 1080p60, sin merge ni blank, el vídeo no se paró ni un segundo y no salió la UI de anuncio. Los backups anuncian su propio corte cada 2-4 s y la cadena rota site→popout→frontpage→mobile_web sin perder calidad. Hasta la tarde anterior no había salido ningún corte en 2 h 20 min de pruebas.
+description: Primer corte cosido real con el intercambio activo en el Chrome de Fran (2026-10-16 13:51, pausenpaii, MIDROLL de 45 s): los 25 polls con anuncio se sirvieron con un backup limpio a 1080p60 y el reloj del vídeo avanzó sin parar, pero Fran vio la imagen congelada hasta pulsar F5: el decodificador de vídeo se atascó con el audio siguiendo, cosa que currentTime no muestra. Desde entonces se muestrean los fotogramas decodificados, el guardián reinicia también por imagen congelada, y el aviso de corte pierde su DISCONTINUITY/MAP colgantes. Los backups se contaminan cada 2-4 s y la cadena rota sin bajar calidad.
 metadata:
   type: project
 ---
@@ -22,20 +22,39 @@ frontpage → mobile_web → site → …`, siempre a 1080p60; `embed` y `autopl
 Desplazamiento de `MEDIA-SEQUENCE` 0 en todos (misma base que la página). Ninguna playlist
 entregada al player llevaba segmentos de anuncio.
 
-**El vídeo:** muestras de 1/s desde 5 s antes hasta 30 s después: ningún parón de 2 s o más, nunca
-`paused`, `readyState` nunca por debajo de 3, `currentTime` 408,3 → 454,3 al acabar → 473,4 a los
-30 s. UI de anuncio de Twitch: 0 muestras. Reinicios (pause/play, reload): 0. CSAI respondidos
-vacíos en la sesión: 2 (midroll), de ventanas `twitch-maf-ad` anteriores.
+**El vídeo, según el registro:** muestras de 1/s desde 5 s antes hasta 30 s después: ningún parón de
+2 s o más, nunca `paused`, `readyState` nunca por debajo de 3, `currentTime` 408,3 → 454,3 al acabar →
+473,4 a los 30 s. UI de anuncio de Twitch: 0 muestras. Reinicios: 0.
 
-**Why:** es la primera evidencia de que la implementación portada de Purple funciona de punta a punta
-en el navegador real de Fran, no solo en los checks unitarios; y confirma que el orden decidido
-(site, popout, frontpage, mobile_web, embed, autoplay) mantiene la calidad del player durante todo el
-corte aunque cada backup se contamine a los pocos segundos.
+**El vídeo, según Fran:** "se quedó congelado el directo y hasta que no hice F5 no pude volver a
+verlo". Las dos cosas a la vez solo cuadran con un **decodificador de vídeo atascado mientras el audio
+sigue**: el reloj del `<video>` lo lleva la pista de audio, así que `currentTime` corre, no hay
+`waiting` y la imagen se queda en el último fotograma. El registro se escribió a las 11:52:11 UTC, así
+que el F5 fue después: la congelación duró al menos desde el corte hasta entonces. El guardián de la
+página solo miraba `currentTime` y no reaccionó. Sospechoso concreto: el aviso del corte (dos polls
+antes) llegaba al player con el `#EXT-X-DISCONTINUITY` del anuncio colgando al final de la playlist
+(Purple lo deja, regla 3), y el siguiente poll ya era el backup limpio sin discontinuidad: un
+"pendiente de discontinuidad" aplicado a un segmento en vivo continuo puede descolocar la línea de
+tiempo del vídeo. Es hipótesis, no está demostrado. Cambios del 2026-10-16 (commit siguiente a
+`cb5bb21`): `blankAds` quita también el `DISCONTINUITY` y el `MAP` posteriores a un corte anunciado;
+las muestras llevan `frames` (`getVideoPlaybackQuality().totalVideoFrames`), `dropped`, `videoWidth`,
+`error`, nº de `<video>` y visibilidad; el guardián vigila desde el primer poll con anuncio hasta 60 s
+después del fin, y reinicia (pause/play, luego reload suave) cuando el reloj **o la imagen** llevan
+6 s parados con la pestaña visible; `verify` cuenta "picture frozen" como fallo; y se registran los
+estados que el player manda a la página (`playerState`, `playerError`) para tener su versión.
 
-**How to apply:** una muestra, no una estadística: queda por ver un PREROLL de carga (donde Purple
-dice que los backups traen su propio preroll y entra `autoplay` a 360p), un corte con el player a
-720p60 o 480p, y una sesión larga con varios cortes. Si Fran dice que vio un anuncio pese a esto,
-buscar en el registro `merged`/`blanked` distintos de 0, `blankAnswered`, un `sequence back` o
-`video still` en el log, o muestras con `adUi`. Relacionado:
+**Why:** demuestra que la parte de playlists funciona en el Chrome real (ningún segmento de anuncio
+llegó al player, calidad mantenida con los backups contaminándose cada pocos segundos) y, a la vez,
+que `currentTime` no basta como evidencia de "se ve": sin fotogramas, un registro puede decir que todo
+fue bien mientras Fran mira una imagen congelada. Cualquier verdict futuro tiene que mirar `frames`.
+
+**How to apply:** en el siguiente corte, mirar primero `samples[].frames` en la ventana del corte: si
+dejan de crecer con `t` avanzando, es el mismo fallo; `restarts[]` dirá si el guardián lo arregló
+(`why: 'picture'`) y en cuánto; `events` con `playerState`/`playerError` dan la versión del player. Si
+sigue congelándose con el DISCONTINUITY ya quitado, la siguiente hipótesis es el salto entre tokens
+(el player recibe cada 2-4 s una playlist de otro token con URLs distintas para los mismos números):
+probar a quedarse en el backup pin aunque anuncie su corte hasta que traiga segmentos de anuncio de
+verdad, o a no cambiar de fuente más de una vez por N s. Queda por ver también un PREROLL de carga y un
+corte con el player a 720p60 o 480p. Relacionado:
 [[twitch-sonda-corte-cosido-real-y-los-siete-backups-limpios]] (la sonda que lo decidió),
 [[twitch-ningun-player-type-garantiza-stream-sin-anuncios]].

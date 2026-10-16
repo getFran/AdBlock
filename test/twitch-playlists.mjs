@@ -95,6 +95,9 @@ check('a stitched midroll: the ad segments by title, range and source; the backu
   const blanked = W.blankAds(announced, [], HOST + 'x.m3u8');
   assert.deepEqual(blanked.uris, [CDN + 'ad-0.ts', CDN + 'ad-1.ts']);
   assert.ok(!blanked.text.includes('ad-0.ts') && blanked.text.includes('live-114.ts'), 'only the prefetch lines after the announcement go');
+  assert.ok(!blanked.text.includes('#EXT-X-DISCONTINUITY'), "the ad's DISCONTINUITY after the announcement goes too");
+  const inside = W.blankAds(stitched({ seq: 100, start: t0, liveCount: 10, ads: 4 }), [10, 11, 12, 13], HOST + 'x.m3u8');
+  assert.ok(inside.text.includes('#EXT-X-DISCONTINUITY'), 'a DISCONTINUITY before listed segments stays');
   assert.ok(W.stripAdDateranges(blanked.text).includes('twitch-trigger') && !W.stripAdDateranges(blanked.text).includes('twitch-stitched-ad'));
 });
 

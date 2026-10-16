@@ -40,9 +40,11 @@ desactivado de fábrica porque una regla de AdGuard (`||umami.`) rompe el panel 
 - Genérico y YouTube: funcionando y verificados.
 - Twitch: bloqueo por intercambio de stream (site → popout → frontpage → mobile_web → embed → autoplay
   360p), blank segment para lo que ningún backup cubra, y `edge.ads.twitch.tv` respondido vacío. Un
-  corte cosido solo se verifica cuando Twitch lo mete: si la prueba no ve ninguno, lo dice. **Primer
-  midroll real bloqueado el 2026-10-16** (pausenpaii, 45 s, 25/25 polls servidos con backup limpio a
-  1080p60, sin parón ni UI de anuncio); el anuncio client-side se corta desde el primer día.
+  corte cosido solo se verifica cuando Twitch lo mete: si la prueba no ve ninguno, lo dice. Primer
+  midroll real el 2026-10-16 (pausenpaii, 45 s): playlists limpias (25/25 polls con backup a 1080p60)
+  pero la imagen se quedó congelada hasta un F5 con el audio siguiendo; desde entonces el guardián de la
+  página reinicia el player cuando los fotogramas dejan de pintarse. El anuncio client-side se corta
+  desde el primer día.
 
 Cuando salte un anuncio con la extensión cargada no hay que copiar nada: la extensión deja sola un
 `Descargas\AdBlock\twitch-<fecha>-<motivo>.json` (tras cada corte cosido y cuando la UI de anuncio de

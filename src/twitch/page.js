@@ -27,8 +27,8 @@ const GQL_HOST = 'gql.twitch.tv';
 const ADS_HOST = 'edge.ads.twitch.tv';
 const GQL_HEADERS = ['Client-Integrity', 'X-Device-Id', 'Authorization', 'Client-Version', 'Client-Session-Id'];
 const ALIASES = { 'X-Device-Id': ['Device-ID'] };
-const STALL_MS = 6000; // the video still this long after a break, not paused: a restart
-const WATCH_MS = 30000; // how long after a break's end the guard watches
+const STALL_MS = 6000; // the clock or the picture still this long, tab visible, not paused: a restart
+const WATCH_MS = 60000; // how long after a break's end the guard keeps watching
 const SAMPLE_KEEP = 900; // 15 min of one sample per second: video position, paused, readyState, ad UI
 const AD_UI_RUN = 3; // Twitch's ad UI seen this many samples in a row makes a record
 const SAVE_AFTER_BREAK_MS = 20000; // the record of a break waits for what the player does after it
@@ -269,45 +269,47 @@ const AD_UI_SELECTORS = ['[data-a-target="video-ad-label"]', '[data-a-target="vi
   }
 
   let guard = null;
-  // After the worker reports the end of a break the video must move again. Still for STALL_MS while not paused: one
-  // pause/play (Purple's E6, through the worker's RPC); still stuck STALL_MS later: one soft reload. Once each.
-  function guardAfterBreak(worker, info) {
-    if (guard) clearInterval(guard);
-    const started = Date.now();
-    let last = null;
-    let lastMoved = Date.now();
-    let restarted = false;
-    let reloaded = false;
-    guard = setInterval(() => {
+  // From the first poll with ad segments until WATCH_MS after the break's end, once a second: the clock (currentTime)
+  // and the picture (decoded frames) must both move while the tab is visible and the video is not paused. Still for
+  // STALL_MS: one pause/play (Purple's E6, through the worker's RPC); still STALL_MS later: one soft reload (vaft's
+  // setSrc). Once each per break. A frozen picture with the clock running is what Fran saw on 2026-10-16.
+  function guardBreak(worker, info) {
+    if (guard) clearInterval(guard.timer);
+    const g = { worker, breakAt: info && info.at, endedAt: null, last: null, lastMoved: Date.now(), lastPainted: Date.now(), restarted: false, reloaded: false, timer: null };
+    guard = g;
+    g.timer = setInterval(() => {
       const v = mainVideo();
       const now = Date.now();
       if (v) {
-        if (last === null || v.currentTime !== last) {
-          last = v.currentTime;
-          lastMoved = now;
-        }
-        const stuck = !v.paused && !v.ended && now - lastMoved >= STALL_MS;
-        if (stuck && !restarted) {
-          restarted = true;
-          lastMoved = now;
-          log('video still for ' + Math.round(STALL_MS / 1000) + ' s after the break (t=' + v.currentTime.toFixed(1) + ', readyState=' + v.readyState + '): pause/play');
-          state.restarts.push({ at: now, kind: 'pause-play', t: v.currentTime, breakAt: info && info.at });
-          emit('stallRestart', { kind: 'pause-play', t: v.currentTime });
+        const q = v.getVideoPlaybackQuality ? v.getVideoPlaybackQuality() : null;
+        const frames = q ? q.totalVideoFrames : null;
+        const t = v.currentTime;
+        if (g.last === null || t !== g.last.t) g.lastMoved = now;
+        if (g.last === null || frames === null || frames !== g.last.frames) g.lastPainted = now;
+        g.last = { t, frames };
+        const watching = document.visibilityState === 'visible' && !v.paused && !v.ended;
+        const why = !watching ? null : now - g.lastMoved >= STALL_MS ? 'clock' : now - g.lastPainted >= STALL_MS ? 'picture' : null;
+        if (why && !g.restarted) {
+          g.restarted = true;
+          g.lastMoved = g.lastPainted = now;
+          log('video ' + why + ' still for ' + Math.round(STALL_MS / 1000) + ' s (t=' + t.toFixed(1) + ', frames=' + frames + ', readyState=' + v.readyState + '): pause/play');
+          state.restarts.push({ at: now, kind: 'pause-play', why, t, frames, breakAt: g.breakAt });
+          emit('stallRestart', { kind: 'pause-play', why, t, frames });
           worker.rpc('pause');
           worker.rpc('play');
           worker.rpc('play');
-        } else if (stuck && restarted && !reloaded) {
-          reloaded = true;
-          lastMoved = now;
+        } else if (why && g.restarted && !g.reloaded) {
+          g.reloaded = true;
+          g.lastMoved = g.lastPainted = now;
           const ok = reloadTwitchPlayer();
-          log('video still after the pause/play: soft reload of the player ' + (ok ? 'ran' : 'FAILED (player state not found)'));
-          state.restarts.push({ at: now, kind: 'reload', ok, t: v.currentTime, breakAt: info && info.at });
-          emit('stallRestart', { kind: 'reload', ok, t: v.currentTime });
+          log('video ' + why + ' still after the pause/play: soft reload of the player ' + (ok ? 'ran' : 'FAILED (player state not found)'));
+          state.restarts.push({ at: now, kind: 'reload', why, ok, t, frames, breakAt: g.breakAt });
+          emit('stallRestart', { kind: 'reload', why, ok, t, frames });
         }
       }
-      if (now - started > WATCH_MS) {
-        clearInterval(guard);
-        guard = null;
+      if (g.endedAt !== null && now - g.endedAt > WATCH_MS) {
+        clearInterval(g.timer);
+        if (guard === g) guard = null;
       }
     }, 1000);
   }
@@ -317,11 +319,26 @@ const AD_UI_SELECTORS = ['[data-a-target="video-ad-label"]', '[data-a-target="vi
   // with what the player did after it), when the ad UI stays visible, or by hand (window.__adblockTwitch.save()).
   // It goes to Downloads/AdBlock/<name>.json through twitch-bridge.js and the service worker.
   let adUiRun = 0;
+  // frames: decoded video frames so far (getVideoPlaybackQuality). A clock that runs while frames stop is a picture
+  // frozen on its last frame with the audio going on, which currentTime alone never shows (2026-10-16, pausenpaii)
   function sample() {
     try {
       const v = mainVideo();
+      const q = v && v.getVideoPlaybackQuality ? v.getVideoPlaybackQuality() : null;
       const adUi = AD_UI_SELECTORS.filter((s) => document.querySelector(s));
-      state.samples.push({ at: Date.now(), t: v ? Math.round(v.currentTime * 10) / 10 : null, paused: v ? v.paused : null, ready: v ? v.readyState : null, adUi });
+      state.samples.push({
+        at: Date.now(),
+        t: v ? Math.round(v.currentTime * 10) / 10 : null,
+        paused: v ? v.paused : null,
+        ready: v ? v.readyState : null,
+        frames: q ? q.totalVideoFrames : null,
+        dropped: q ? q.droppedVideoFrames : null,
+        w: v ? v.videoWidth : null,
+        err: v && v.error ? v.error.code : 0,
+        videos: document.querySelectorAll('video').length,
+        vis: document.visibilityState === 'visible',
+        adUi,
+      });
       if (state.samples.length > SAMPLE_KEEP) state.samples.splice(0, state.samples.length - SAMPLE_KEEP);
       if (adUi.length) {
         adUiRun++;
@@ -408,9 +425,29 @@ const AD_UI_SELECTORS = ['[data-a-target="video-ad-label"]', '[data-a-target="vi
     return name;
   }
 
+  // what Twitch's player core tells the page: its state changes and anything that looks like an error, to the record
+  let lastPlayerState = null;
+  function notePlayerMessage(data) {
+    try {
+      const key = data.arg && data.arg.key;
+      if (key === 'state' && data.arg.value !== lastPlayerState) {
+        lastPlayerState = data.arg.value;
+        emit('playerState', { value: String(data.arg.value).slice(0, 40) });
+      } else if (/error/i.test(String(data.type || data.funcName || key || ''))) {
+        emit('playerError', { type: String(data.type || data.funcName || key).slice(0, 60), value: JSON.stringify(data.arg || data.value || null).slice(0, 200) });
+      }
+    } catch {
+      // never from the player's own traffic
+    }
+  }
+
   function onWorkerMessage(worker, event) {
     const data = event && event.data;
-    if (!data || typeof data !== 'object' || !data.adblock) return;
+    if (!data || typeof data !== 'object') return;
+    if (!data.adblock) {
+      notePlayerMessage(data);
+      return;
+    }
     switch (data.adblock) {
       case 'log':
         record(...(data.args || []));
@@ -429,14 +466,12 @@ const AD_UI_SELECTORS = ['[data-a-target="video-ad-label"]', '[data-a-target="vi
         break;
       case 'break':
         state.breaks.push(data.info);
-        if (guard) {
-          clearInterval(guard);
-          guard = null;
-        }
+        guardBreak(worker, data.info);
         break;
       case 'break-end':
         state.breakEnds.push(data.info);
-        guardAfterBreak(worker, data.info);
+        if (guard) guard.endedAt = Date.now();
+        else guardBreak(worker, data.info);
         setTimeout(() => save('break'), SAVE_AFTER_BREAK_MS);
         break;
       case 'dump': {

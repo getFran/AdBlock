@@ -579,7 +579,9 @@
   // listed, with the EXT-X-MAP only ad segments use, for the fetch hook to answer with the blank segment. Lines that make
   // the player fetch ad media ahead go, and their URIs are listed too: the EXT-X-PART lines of an ad segment; the
   // PART, PRELOAD-HINT and TWITCH-PREFETCH lines after the last segment when it is an ad or when they follow a break
-  // announced after it (B-034); any of them with an ad URI. Every other line stays.
+  // announced after it (B-034); any of them with an ad URI. A break announced past the last segment also loses the
+  // EXT-X-DISCONTINUITY and EXT-X-MAP lines that follow it: they open the ad's timeline, which the player never gets
+  // (2026-10-16: a midroll swapped clean left the picture frozen while the clock ran). Every other line stays.
   function blankAds(text, adSegments, playlistUrl) {
     const lines = text.split('\n');
     const segments = readSegments(lines);
@@ -610,6 +612,10 @@
     lines.forEach((raw, index) => {
       while (owner < segments.length && segments[owner].uri < index) owner++;
       const line = raw.trim();
+      if (announced >= 0 && index > announced && (line.startsWith('#EXT-X-DISCONTINUITY') || line.startsWith('#EXT-X-MAP:'))) {
+        removed.add(index);
+        return;
+      }
       if (line.startsWith('#EXT-X-MAP:')) {
         closeMap();
         const uri = uriAttr(line);
