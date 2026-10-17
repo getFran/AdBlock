@@ -416,7 +416,8 @@ function writeManifest({ resources }) {
     manifest_version: 3,
     name: 'getFran AdBlock',
     version: EXT_VERSION,
-    description: `Ad blocking shell: AdGuard DNR rulesets ${PKG_VERSION}, cosmetic CSS, YouTube scriptlets, Twitch worker hook. Personal build, loaded unpacked.`,
+    // what a person sees in chrome://extensions; the lists' version is in the build log, not here
+    description: 'Bloquea la publicidad en todas las webs y los anuncios de YouTube y Twitch.',
     minimum_chrome_version: '128',
     icons: Object.fromEntries(ICON_SIZES.map((size) => [size, `icons/icon-${size}.png`])),
     // scripting + storage: the content scripts and the per-site switch; downloads: the Twitch records (src/background.js)
