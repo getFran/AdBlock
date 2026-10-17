@@ -29,9 +29,13 @@
 //   - outside a break, every playlist as Twitch sent it (a break announced past the last segment loses only the
 //     prefetch lines that point at its first ad segments, and those URIs are answered blank);
 //   - on a poll with ad segments, the playlist of the first clean backup of the player's quality, its MEDIA-SEQUENCE
-//     aligned to the page's numbering; the type that worked goes first next time, a type that came with ads or with
-//     its own break announced is left out for 5 s;
-//   - with no clean backup, the page's playlist with each ad segment replaced by the backup segment at the same
+//     aligned to the page's numbering; the type that worked goes first next time, a type that came with ads is left
+//     out for 2 s, a type whose playlist only announces its own break gets a new token but its live segments are
+//     still usable this poll (announcement stripped), before any drop to 360p;
+//   - with no clean backup of the player's quality: the announced one sanitized, else the last same-quality backup
+//     again if it is under 3 s old (one poll without new segments beats a resolution switch: the picture froze on
+//     2026-10-16 in a break that went 1080p60 <-> 360p five times), else autoplay at 360p;
+//   - with none of those, the page's playlist with each ad segment replaced by the backup segment at the same
 //     date-time, and the ones left listed as they are but answered with the blank segment when the player asks.
 // Diagnostics: console under [AdBlock/twitch:worker], and window.__adblockTwitch on the page (events, breaks, log).
 
@@ -52,7 +56,11 @@
   const BACKUP_TYPES = ['site', 'popout', 'frontpage', 'mobile_web', 'embed'];
   const LOW_QUALITY_TYPE = 'autoplay'; // 360p, requested with platform android; never pinned
   const platformOf = (type) => (type === LOW_QUALITY_TYPE ? 'android' : 'web');
-  const CONTAMINATED_MS = 5000; // F-10: a type whose backup had ads (or its own break announced) is skipped this long
+  // F-10 had 5 s for a type whose backup had ads; with five web types that each come back with ads within seconds of a
+  // fresh token, 5 s left the pool empty 5 times in one 84 s break (esportmaniacos, 2026-10-16) and the player went to
+  // 360p each time. A fresh token is ready in 0.3 s: 2 s is enough to let it answer
+  const CONTAMINATED_MS = 2000;
+  const HOLD_MS = 3000; // a same-quality backup playlist this fresh is given again rather than dropping to 360p
   const BLANK_TTL_MS = 120000; // F-14: an ad URI is answered blank this long after the last poll that listed it
   const PREWARM_MS = 60000; // F-19: at most one prewarm per this many ms
   const RECOVERING_MS = 10000; // ad-break.ts: clean polls this long after a break bring the state back to idle
@@ -122,6 +130,7 @@
     sequenceShifts: new Map(), // F-23: backup variant URL -> shift, for the current break
     source: MAIN_SOURCE, // F-24: where the playlist being built comes from
     delivered: null, // F-24: { source, newest } of the last playlist given to the player
+    lastBackup: null, // { text, at, quality, source } of the last same-quality backup delivered, for HOLD_MS
     adState: 'idle', // ad-break.ts: idle | ad | recovering
     endedAt: 0,
     break: null, // accounting of the current break, posted to the page at its end
@@ -823,11 +832,12 @@
     return { type, data: text, dump: [text], contaminated: false, verdict: 'clean', variant };
   }
 
-  // F-09, F-10: a type that gave no clean backup gets a new token; one whose backup had ads is left out for a while
+  // F-09, F-10: a type that gave no clean backup gets a new token; one whose backup had ad segments is left out for a
+  // while. One that only announced its break is not: its live segments serve this poll and the new token the next
   function noteBackup(backup, dump) {
     if (!backup.data) createStreamAccess(backup.type);
     for (const text of backup.dump) dump.push(text);
-    if (backup.contaminated && !backup.data) state.contaminatedUntil.set(backup.type, Date.now() + CONTAMINATED_MS);
+    if (backup.verdict === 'ads') state.contaminatedUntil.set(backup.type, Date.now() + CONTAMINATED_MS);
   }
 
   // F-23: the backup gets the numbers the page's playlist gives the same date-time; one shift per variant and break
@@ -866,6 +876,7 @@
       emit('backupUsed', { playerType: backup.type, quality, shift: aligned.shift });
     }
     state.source = source;
+    if (backup.type !== LOW_QUALITY_TYPE) state.lastBackup = { text: aligned.text, at: Date.now(), quality, source };
     return aligned.text;
   }
 
@@ -933,6 +944,7 @@
       merged: 0,
       blanked: 0,
       blankListed: 0,
+      held: 0,
       backups: [],
     };
     log('AD BREAK' + (resumed ? ' (again)' : '') + ' in the player playlist: roll=' + (summary.rollType || '?') + ' pod=' + (summary.podLength || '?') + ' adSegments=' + summary.adSegments + '/' + summary.segments + ' seq=' + summary.mediaSequence + ' quality=' + (state.quality || '?'));
@@ -943,7 +955,7 @@
     const b = state.break;
     if (!b) return;
     const info = { ...b, endedAt: now, durationMs: now - b.at, blankAnswered: state.blankAnswered, playlists: state.recent.filter((r) => r.at >= b.at - 10000) };
-    log('AD BREAK over after ' + Math.round(info.durationMs / 1000) + ' s: polls=' + b.polls + ' swapped=' + b.swapped + ' merged=' + b.merged + ' blanked=' + b.blanked + ' (uris listed ' + b.blankListed + ', answered blank so far ' + state.blankAnswered + ') backups=' + (b.backups.map((x) => x.type + '@' + x.quality).join(' > ') || 'none'));
+    log('AD BREAK over after ' + Math.round(info.durationMs / 1000) + ' s: polls=' + b.polls + ' swapped=' + b.swapped + ' held=' + (b.held || 0) + ' merged=' + b.merged + ' blanked=' + b.blanked + ' (uris listed ' + b.blankListed + ', answered blank so far ' + state.blankAnswered + ') backups=' + (b.backups.map((x) => x.type + '@' + x.quality).join(' > ') || 'none'));
     post({ adblock: 'break-end', info });
   }
 
@@ -995,18 +1007,26 @@
     emit('adDetected', { adSegments: summary.adSegments, segments: summary.segments });
 
     // F-09, F-10, F-25, F-26: the first type alone, then the rest at once, in order; a clean backup that lists nothing
-    // past the player's newest number waits for the types after it
+    // past the player's newest number waits for the types after it. autoplay (360p) waits for everything of the
+    // player's quality: a clean web type, an announced one with its announcement stripped, the last delivery held
     const dump = [];
     const target = variantTarget(url);
     const now = Date.now();
     const types = backupPlayerTypes().filter((type) => (state.contaminatedUntil.get(type) || 0) <= now);
     const rounds = [types.slice(0, 1), types.slice(1)].filter((round) => round.length);
     let behind = null;
+    let announced = null;
+    let low = null;
     for (const round of rounds) {
       const backups = await Promise.all(round.map((type) => fetchBackup(type, target)));
       for (const backup of backups) noteBackup(backup, dump);
       log('backups: ' + backups.map((x) => x.type + '=' + x.verdict + (x.variant ? '@' + x.variant.name : '') + (x.detail ? '(' + x.detail + ')' : '')).join('  '));
       for (const backup of backups) {
+        if (backup.type === LOW_QUALITY_TYPE) {
+          if (backup.data && !low) low = backup;
+          continue;
+        }
+        if (backup.verdict === 'announced' && !announced && backup.variant && qualityName(backup.variant.name) === qualityName(target.quality)) announced = backup;
         if (!backup.data) continue;
         const source = withoutQuery(backup.variant.url);
         const aligned = alignSequence(backup.data, backup.variant, text);
@@ -1020,6 +1040,32 @@
       }
     }
     if (behind) return useBackup(behind.backup, behind.aligned, behind.source);
+    if (announced) {
+      // its break is announced past its last segment: the same treatment as the page's own announcement (prefetch,
+      // DISCONTINUITY and MAP of the ad removed, the ad URIs answered blank, the ad DATERANGEs stripped)
+      const cleaned = blankAds(announced.dump[0], [], announced.variant.url);
+      if (cleaned.uris.length) listBlank(cleaned.uris, cleaned.uris.length);
+      const source = withoutQuery(announced.variant.url);
+      const aligned = alignSequence(stripAdDateranges(cleaned.text), announced.variant, text);
+      if (!listsNothingNew(aligned.text, source)) {
+        log('no clean backup at ' + (target.quality || '?') + ': ' + announced.type + ' with its own announcement stripped');
+        emit('backupAnnouncedUsed', { playerType: announced.type });
+        return useBackup({ ...announced, data: aligned.text }, aligned, source);
+      }
+    }
+    const held = state.lastBackup;
+    if (held && now - held.at <= HOLD_MS && qualityName(held.quality) === qualityName(target.quality)) {
+      log('no clean backup at ' + (target.quality || '?') + ': the last one (' + Math.round((now - held.at) / 100) / 10 + ' s old) given again instead of 360p');
+      emit('backupHeld', { ageMs: now - held.at });
+      if (b) b.held = (b.held || 0) + 1;
+      state.source = held.source;
+      return held.text;
+    }
+    if (low) {
+      const source = withoutQuery(low.variant.url);
+      const aligned = alignSequence(low.data, low.variant, text);
+      return useBackup(low, aligned, source);
+    }
 
     // no clean backup: the page's playlist with ad segments replaced by time (F-13), the rest answered blank (F-14)
     const merged = mergeWithBackups([text, ...dump]);
@@ -1075,6 +1121,7 @@
         state.pendingAccess.clear();
         state.pinnedType = null;
         state.contaminatedUntil.clear();
+        state.lastBackup = null;
         state.lastPrewarm = -Infinity;
       }
       state.channel = channel;

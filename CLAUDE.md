@@ -35,8 +35,13 @@ alcance (carcasa que consume piezas mantenidas por otros), no con otro.
   de `docs/findings` sobre *sequence numbering*, *backup behind*, *blank segments* y *prewarm*). Al ver
   `twitch-stitched-ad` con segmentos de anuncio en la playlist del player, el worker le sirve la playlist
   del backup limpio de su misma calidad en el orden **site, popout, frontpage, mobile_web, embed** y
-  **autoplay** (platform `android`, 360p) como último recurso; fija el tipo que funcionó y descarta 5 s el
-  que venga con anuncio o con su propio corte anunciado. Sin backup limpio, merge por
+  **autoplay** (platform `android`, 360p) como último recurso; fija el tipo que funcionó y descarta **2 s**
+  (Purple: 5; con 5 s el pool de 1080p60 se vaciaba y el player bajaba a 360p cinco veces en un corte,
+  2026-10-16) el que venga con segmentos de anuncio. El que solo **anuncia** su corte no se descarta: se
+  sirve saneado como el aviso de la página (prefetch, `DISCONTINUITY` y `MAP` del anuncio fuera, `DATERANGE`
+  del anuncio fuera) y se le pide token nuevo. Si aun así no hay nada a la calidad del player, se
+  **repite la última playlist** de esa calidad si tiene menos de 3 s (`held`), y solo entonces `autoplay`:
+  un cambio de resolución dentro de la variante es el sospechoso del decodificador atascado. Sin nada, merge por
   `PROGRAM-DATE-TIME` y, para lo que quede, el **blank segment** de Purple (viene de vaft, MIT, aviso en
   el fichero). `MEDIA-SEQUENCE` del backup alineado a la numeración de la página, `EXT-X-MAP` como lo
   hace Purple en el merge. Fuera de un corte las playlists llegan al player sin tocar. **Ni recorte de
@@ -157,13 +162,13 @@ sin `adPlacements` (sin la extensión trae 1), no "no vi anuncio".
 
 **Un corte cosido no se puede provocar:** sale cuando Twitch lo mete (en `auronplay` tardó 5 min el
 2026-10-15 por la mañana; esa misma tarde, 2 h 20 min y 23 cargas sin ninguno). Si en la pasada no sale
-ninguno, la prueba lo dice tal cual; hay que repetir con otros canales grandes (`--twitch=a,b,c`). **Primer
-midroll real el 2026-10-16** (pausenpaii, 45 s): las playlists salieron limpias (25/25 polls con backup a
-1080p60) y el reloj del vídeo corrió, pero **Fran vio la imagen congelada hasta pulsar F5**: el reloj lo
-lleva el audio, así que `currentTime` no detecta un decodificador de vídeo atascado. Por eso las muestras
-llevan `frames` y el guardián reinicia también por imagen parada, y `verify` cuenta "picture frozen" como
-fallo (memoria `twitch-intercambio-verificado-primer-midroll-real`, con la hipótesis del `DISCONTINUITY`
-colgante y la siguiente si repite). Falta ver un PREROLL de carga.
+ninguno, la prueba lo dice tal cual; hay que repetir con otros canales grandes (`--twitch=a,b,c`). **Cuatro
+midrolls reales el 2026-10-16 y 17** (memoria `twitch-intercambio-verificado-primer-midroll-real`): playlists
+limpias en todos, pero en uno de 84 s la cadena cayó cinco veces a 360p y **Fran vio la imagen congelada
+hasta pulsar F5** con el reloj corriendo: `currentTime` no detecta un decodificador atascado, por eso las
+muestras llevan `frames`, el guardián reinicia también por imagen parada y `verify` cuenta "picture frozen"
+como fallo; el cuarto, ya con fotogramas, se vio perfecto. Un registro cae en `Descargas\AdBlock\` tras
+**cada** corte, también cuando va bien. Falta ver un PREROLL de carga.
 
 **Al limpiar navegadores de prueba colgados, nunca `taskkill //IM chrome.exe`:** mata el Chrome de
 Fran (memoria `no-matar-chrome-por-nombre-de-imagen` en `PyCharm Projects`).
