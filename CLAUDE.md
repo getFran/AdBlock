@@ -122,6 +122,12 @@ build.mjs        lee build.config.mjs y escribe dist/:
   compilado en build; `src/youtube/main.js` solo decide qué reglas aplican por hostname. Las
   excepciones `#@%#` del propio Base se respetan. De uAssets solo entran los scriptlets que
   `@adguard/scriptlets` implementa; el resto (`rpnt`, `trusted-*`) se descarta y el build lo lista.
+  **El panel "Errores" de `chrome://extensions` muestra "Blocked script execution in 'about:blank' because
+  the document's frame is sandboxed…" con la pila en `youtube.js` (`Reflect.apply` del proxy de
+  `Node.prototype.appendChild`, regla del Base de AdGuard):** es YouTube insertando su propio iframe
+  `about:blank` con `sandbox` sin `allow-scripts`; Chrome lo atribuye a la extensión porque la regla
+  intercepta `appendChild` y nuestro frame está en la pila. Sin efecto (la prueba `youtube` pasa); no se
+  arregla desde el trap porque el aviso salta dentro del `appendChild` original. Visto el 2026-10-17.
 - **Twitch (bloqueo):** `src/twitch/page.js` reemplaza `window.Worker`, lee el script del worker del
   player con XHR síncrono y lo recrea como blob con `src/twitch/worker.js` delante; nada nuestro llega
   al worker antes del primer `postMessage` del player (Purple vio morir el worker si llegaba antes). El
