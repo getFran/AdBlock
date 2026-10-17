@@ -14,7 +14,7 @@ alcance (carcasa que consume piezas mantenidas por otros), no con otro.
 | | |
 |---|---|
 | Nombre en Chrome | **getFran AdBlock** (el `name` del manifest; pedido el 2026-10-15) |
-| Descripción | «Bloquea la publicidad en todas las webs y los anuncios de YouTube y Twitch.» (2026-10-17, para que sea distribuible) |
+| Descripción | «Blocks ads on every website, including YouTube and Twitch.» (2026-10-17, en inglés y simple para que sea distribuible) |
 | Icono | `icons/dogwifhatnike.png` (elección de Fran, 2026-10-15); los `icons/icon-{16,32,48,128}.png` están renderizados y commiteados, el build solo los copia. Para cambiarlo, regenerar los cuatro tamaños (recorte cuadrado centrado) y commitearlos |
 | Repo | `getFran/AdBlock` (privado — **debe seguirlo**) |
 | Rama | `main` |
