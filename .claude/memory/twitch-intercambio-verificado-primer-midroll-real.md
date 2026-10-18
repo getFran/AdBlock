@@ -1,6 +1,6 @@
 ---
 name: twitch-intercambio-verificado-primer-midroll-real
-description: Los cuatro primeros midrolls reales con el intercambio activo en el Chrome de Fran (2026-10-16 y 17): todos los polls con anuncio se sirvieron con backups a la calidad del player, pero en uno (esportmaniacos, 84 s, la última pestaña antes de su F5) la cadena cayó cinco veces a autoplay 360p porque los cinco tipos web venían con anuncios a la vez, y Fran vio la imagen congelada hasta F5; el cuarto (nissaxter, con fotogramas muestreados) se vio perfecto. De ahí: contaminación de 2 s en vez de 5, el backup que solo anuncia su corte se usa saneado, se repite la última playlist de la misma calidad antes de bajar a 360p, y el guardián reinicia por imagen congelada.
+description: Los cinco primeros midrolls reales con el intercambio activo en el Chrome de Fran (2026-10-16 a 18): todos los polls con anuncio se sirvieron con backups a la calidad del player, pero en uno (esportmaniacos, 84 s, la última pestaña antes de su F5) la cadena cayó cinco veces a autoplay 360p porque los cinco tipos web venían con anuncios a la vez, y Fran vio la imagen congelada hasta F5; el cuarto (nissaxter) se vio perfecto y el quinto (ohnepixel, 74 s de anuncio a 1080p60, ya con la cadena del 17) fue limpio del todo: 40/40 intercambios entre site y popout, sin 360p, sin parón, fotogramas creciendo. De ahí: contaminación de 2 s en vez de 5, el backup que solo anuncia su corte se usa saneado, se repite la última playlist de la misma calidad antes de bajar a 360p, y el guardián reinicia por imagen congelada.
 metadata:
   type: project
 ---
@@ -49,6 +49,17 @@ colgaba al final de las playlists de aviso. Ninguno está demostrado.
 ErrorInvalidData MasterPlaylist "Response body is not a valid M3U8"` 10 s antes del corte es la
 respuesta vacía al master `picture-by-picture` que pide la página (lo mismo que hace Purple; inofensivo
 hasta ahora).
+
+**El quinto corte (2026-10-18 08:42 UTC, ohnepixel, 1080p60, el primero largo con la cadena del 17):**
+`twitch-2026-10-18T08-45-16-102Z-break.json`. MIDROLL anunciado 2 s antes (2 prefetch quitadas, nunca
+pedidas), pod declarado 3 pero los segmentos de anuncio de la página fueron creciendo de 3 a 25 (unos
+74 s, último poll con anuncio a las 08:43:38); el worker dio el corte por acabado a los 151 s. 40 polls,
+**40 `swapped`, 0 `held`, 0 `merged`, 0 `blanked`**, todos a 1080p60 con `MEDIA-SEQUENCE` +0, alternando
+`site` y `popout` cada 2-4 s (cada uno se "anuncia" y se sanea, el otro entra con token nuevo; `frontpage`,
+`mobile_web` y `embed` venían a ratos con `ads` y no se usaron; `autoplay` nunca). Vídeo: 1/s desde 2 min
+antes hasta 20 s después, `videoWidth` 1920 las 177 muestras de la ventana, **ningún parón de reloj, ningún
+fotograma repetido** (16.988 → 27.367), `dropped` 1 → 3, UI de anuncio 0, reinicios 0, pestaña visible.
+La petición client-side (`edge.ads.twitch.tv`, bp=midroll) respondida vacía 2 min antes. Fran no notó nada.
 
 **Cambios (2026-10-16 y 17):** `blankAds` quita también el `DISCONTINUITY` y el `MAP` posteriores a un
 corte anunciado; las muestras llevan `frames` (`getVideoPlaybackQuality().totalVideoFrames`),

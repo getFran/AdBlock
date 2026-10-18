@@ -52,7 +52,9 @@ desactivado de fábrica porque una regla de AdGuard (`||umami.`) rompe el panel 
   midroll real el 2026-10-16 (pausenpaii, 45 s): playlists limpias (25/25 polls con backup a 1080p60)
   pero la imagen se quedó congelada hasta un F5 con el audio siguiendo; desde entonces el guardián de la
   página reinicia el player cuando los fotogramas dejan de pintarse. El anuncio client-side se corta
-  desde el primer día.
+  desde el primer día. Quinto midroll real el 2026-10-18 (ohnepixel, 74 s de segmentos de anuncio a
+  1080p60, 40 playlists intercambiadas entre site y popout): sin parón, sin imagen congelada, sin UI de
+  anuncio y sin bajar de resolución.
 
 Cuando salte un anuncio con la extensión cargada no hay que copiar nada: la extensión deja sola un
 `Descargas\AdBlock\twitch-<fecha>-<motivo>.json` (tras cada corte cosido y cuando la UI de anuncio de
