@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 // Build of the extension: node build.mjs            -> dist/ (load it unpacked in chrome://extensions)
+//                         node build.mjs --release  -> dist/ for a GitHub release: no records, no diagnostics, no console,
+//                                                      no globals on the pages, no downloads/feedback permissions
 //                         node build.mjs --vendor   -> refresh vendor/ (uAssets quick-fixes, AdGuard Base's YouTube rules)
+// EXT_VERSION=1.2.3 overrides the version of package.json (the release workflow builds the version of the tag).
 //
 // The extension is a shell: nothing here decides what is an ad. The build takes
 //   - DNR rulesets and filter texts from @adguard/dnr-rulesets (the package version is the filter snapshot,
@@ -26,7 +29,11 @@ const PKG_DIR = path.join(ROOT, 'node_modules', '@adguard', 'dnr-rulesets', 'dis
 const readJson = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
 const PKG_VERSION = readJson(path.join(ROOT, 'node_modules', '@adguard', 'dnr-rulesets', 'package.json')).version;
 const SCRIPTLETS_VERSION = readJson(path.join(ROOT, 'node_modules', '@adguard', 'scriptlets', 'package.json')).version;
-const EXT_VERSION = readJson(path.join(ROOT, 'package.json')).version;
+const RELEASE = process.argv.includes('--release');
+const EXT_VERSION = process.env.EXT_VERSION || readJson(path.join(ROOT, 'package.json')).version;
+if (!/^\d+(\.\d+){1,3}$/.test(EXT_VERSION)) throw new Error(`EXT_VERSION "${EXT_VERSION}" is not a Chrome extension version (1 to 4 dot-separated integers)`);
+// what every bundle sees: the kind of build, the version and the GitHub repo whose releases the update check reads
+const DEFINE = { __RELEASE__: String(RELEASE), __EXT_VERSION__: JSON.stringify(EXT_VERSION), __REPO__: JSON.stringify(config.release.repo) };
 const TARGET = 'chrome128';
 
 const log = (...args) => console.log('[build]', ...args);
@@ -435,7 +442,10 @@ async function bundle(entry, outfile, extra = {}) {
     outfile: path.join(DIST, outfile),
     legalComments: 'inline',
     logLevel: 'warning',
+    // a release folds the __RELEASE__ branches away (esbuild only removes dead branches when it minifies syntax)
+    minifySyntax: RELEASE,
     ...extra,
+    define: { ...DEFINE, ...(extra.define || {}) },
   });
 }
 
@@ -448,9 +458,11 @@ async function buildTwitch() {
     target: TARGET,
     legalComments: 'inline',
     logLevel: 'warning',
+    minifySyntax: RELEASE,
+    define: DEFINE,
   });
   const code = worker.outputFiles[0].text;
-  await bundle('src/twitch/page.js', 'twitch.js', { define: { __WORKER_CODE__: JSON.stringify(code), __EXT_VERSION__: JSON.stringify(EXT_VERSION) } });
+  await bundle('src/twitch/page.js', 'twitch.js', { define: { __WORKER_CODE__: JSON.stringify(code) } });
   log(`twitch: worker hook ${code.length} bytes inlined into twitch.js`);
 }
 
@@ -466,7 +478,7 @@ const hostPatterns = (hosts) => hosts.map((h) => `https://*.${h}/*`);
 
 // The content scripts. Not declared in the manifest: the service worker registers them (chrome.scripting) with the
 // sites switched off in the popup excluded, which the manifest cannot express. Same fields as before, camel-cased.
-const CONTENT_SCRIPTS = [
+const ALL_CONTENT_SCRIPTS = [
   { id: 'cosmetic', matches: ['http://*/*', 'https://*/*'], js: ['cosmetic/runtime.js'], runAt: 'document_start', allFrames: true, matchOriginAsFallback: true },
   { id: 'youtube', matches: hostPatterns(config.youtube.hosts), js: ['youtube.js'], runAt: 'document_start', allFrames: true, world: 'MAIN' },
   { id: 'twitch', matches: hostPatterns(config.twitch.hosts), js: ['twitch.js'], runAt: 'document_start', world: 'MAIN' },
@@ -474,6 +486,8 @@ const CONTENT_SCRIPTS = [
   // youtube.js also runs in embeds
   { id: 'bridge', matches: hostPatterns([...config.twitch.hosts, ...config.youtube.hosts]), js: ['bridge.js'], runAt: 'document_start', allFrames: true },
 ];
+// the bridge only carries records: a release has none
+const CONTENT_SCRIPTS = RELEASE ? ALL_CONTENT_SCRIPTS.filter((s) => s.id !== 'bridge') : ALL_CONTENT_SCRIPTS;
 
 function writeManifest({ resources }) {
   const manifest = {
@@ -483,9 +497,12 @@ function writeManifest({ resources }) {
     // what a person sees in chrome://extensions; the lists' version is in the build log, not here
     description: 'Blocks ads on every website, including YouTube and Twitch.',
     minimum_chrome_version: '128',
+    homepage_url: 'https://github.com/' + config.release.repo,
     icons: Object.fromEntries(ICON_SIZES.map((size) => [size, `icons/icon-${size}.png`])),
-    // scripting + storage: the content scripts and the per-site switch; downloads: the Twitch records (src/background.js)
-    permissions: ['declarativeNetRequest', 'declarativeNetRequestFeedback', 'scripting', 'storage', 'downloads'],
+    // scripting + storage: the content scripts and the per-site switch; alarms: the daily update check. Development builds
+    // add declarativeNetRequestFeedback (test/verify.mjs reads the matched rules) and downloads (the Twitch and YouTube
+    // records, src/background.js)
+    permissions: ['declarativeNetRequest', 'scripting', 'storage', 'alarms', ...(RELEASE ? [] : ['declarativeNetRequestFeedback', 'downloads'])],
     host_permissions: ['<all_urls>'],
     background: { service_worker: 'background.js' },
     declarative_net_request: { rule_resources: resources },
@@ -530,6 +547,7 @@ async function vendor() {
 async function main() {
   if (process.argv.includes('--vendor')) return vendor();
   const started = Date.now();
+  log(`${RELEASE ? 'release' : 'development'} build, version ${EXT_VERSION}`);
   fs.rmSync(DIST, { recursive: true, force: true });
   fs.mkdirSync(DIST, { recursive: true });
   fs.rmSync(GEN, { recursive: true, force: true });
@@ -542,10 +560,11 @@ async function main() {
   await bundle('src/popup/popup.js', 'popup.js');
   fs.copyFileSync(path.join(ROOT, 'src', 'popup', 'popup.html'), path.join(DIST, 'popup.html'));
   await bundle('src/cosmetic/runtime.js', 'cosmetic/runtime.js');
-  await bundle('src/youtube/main.js', 'youtube.js', { define: { __EXT_VERSION__: JSON.stringify(EXT_VERSION) } });
+  await bundle('src/youtube/main.js', 'youtube.js');
   await buildTwitch();
-  await bundle('src/bridge.js', 'bridge.js');
+  if (!RELEASE) await bundle('src/bridge.js', 'bridge.js');
   copyIcons();
+  for (const file of ['LICENSE', 'THIRD_PARTY_NOTICES.md']) fs.copyFileSync(path.join(ROOT, file), path.join(DIST, file));
   writeManifest({ resources });
 
   const size = (f) => Math.round(fs.statSync(path.join(DIST, f)).size / 1024) + ' KB';

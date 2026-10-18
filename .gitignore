@@ -16,3 +16,8 @@ dist/
 # Caché del build (descargas de uAssets) y perfiles de Chromium de la verificación
 .cache/
 test/profiles/
+
+# Release artefacts of .github/workflows/release.yml when run locally
+out/
+*.zip
+notes.md

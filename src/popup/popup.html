@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <title>getFran AdBlock</title>
@@ -12,6 +12,7 @@
         --bg: #fff;
         --accent: #1a73e8;
         --off: #b3261e;
+        --update-bg: #fdecea;
       }
       @media (prefers-color-scheme: dark) {
         :root {
@@ -21,6 +22,7 @@
           --bg: #202124;
           --accent: #8ab4f8;
           --off: #f28b82;
+          --update-bg: #3a2322;
         }
       }
       body {
@@ -47,6 +49,25 @@
       }
       main {
         padding: 12px;
+      }
+      #update {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+        margin: -4px 0 12px;
+        padding: 8px 10px;
+        border-radius: 6px;
+        background: var(--update-bg);
+        color: var(--off);
+      }
+      #update[hidden] {
+        display: none;
+      }
+      #update button {
+        border-color: var(--off);
+        color: var(--off);
+        white-space: nowrap;
       }
       .site {
         font-weight: 600;
@@ -107,6 +128,17 @@
         font-size: 12px;
         margin-top: 12px;
       }
+      footer {
+        display: flex;
+        justify-content: space-between;
+        padding: 8px 12px;
+        border-top: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 12px;
+      }
+      footer a {
+        color: var(--muted);
+      }
     </style>
   </head>
   <body>
@@ -115,11 +147,19 @@
       <strong>getFran AdBlock</strong>
     </header>
     <main>
+      <div id="update" hidden>
+        <span></span>
+        <button type="button">Download</button>
+      </div>
       <div id="current"></div>
-      <h2>Sitios desactivados</h2>
+      <h2>Switched off on</h2>
       <ul id="list"></ul>
-      <p class="note">Desactivar un sitio quita en él los bloqueos de red, el CSS cosmético y los scripts de YouTube y Twitch. Incluye sus subdominios. La pestaña se recarga al cambiarlo.</p>
+      <p class="note">Switching a site off removes network blocking, cosmetic CSS and the YouTube and Twitch scripts on it, subdomains included. The tab reloads when you change it.</p>
     </main>
+    <footer>
+      <span id="version"></span>
+      <a id="check" href="#">Check for updates</a>
+    </footer>
     <script src="popup.js"></script>
   </body>
 </html>

@@ -1,0 +1,90 @@
+# Builds the release zip and publishes a GitHub release.
+#   - push of a tag v*: the version of the tag, with the lists committed at that tag
+#   - Mondays (and workflow_dispatch): installs the latest @adguard/dnr-rulesets and @adguard/scriptlets, refreshes the
+#     vendored snapshots and, if any list changed, commits them to main, bumps the patch version, tags and releases.
+#     Nothing changed: nothing happens. The extension's daily update check reads <repo>/releases/latest.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  schedule:
+    - cron: '23 6 * * 1'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Release even if the lists did not change
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_type == 'tag' && github.ref || 'main' }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Version from the tag
+        if: github.ref_type == 'tag'
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Fresh lists
+        if: github.ref_type != 'tag'
+        env:
+          FORCE: ${{ inputs.force }}
+        run: |
+          npm install --no-audit --no-fund @adguard/dnr-rulesets@latest @adguard/scriptlets@latest
+          npm run vendor
+          # the snapshot headers carry the download time: ignored, only rules and package versions count
+          if [ -z "$(git diff -I 'vendored on' -- package.json package-lock.json vendor/)" ] && [ "$FORCE" != "true" ]; then
+            echo "lists unchanged since the last release: nothing to do"
+            echo "SKIP=true" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          VERSION=$(npm version patch --no-git-tag-version)
+          VERSION=${VERSION#v}
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          DNR=$(node -p "require('./node_modules/@adguard/dnr-rulesets/package.json').version")
+          SCR=$(node -p "require('./node_modules/@adguard/scriptlets/package.json').version")
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add package.json package-lock.json vendor/
+          git commit -m "Lists of $(date -u +%F): @adguard/dnr-rulesets $DNR, @adguard/scriptlets $SCR (release $VERSION)"
+          git tag "v$VERSION"
+          git push origin HEAD:main "v$VERSION"
+
+      - name: Build
+        if: env.SKIP != 'true'
+        run: EXT_VERSION="$VERSION" npm run build:release
+
+      - name: Zip and notes
+        if: env.SKIP != 'true'
+        run: |
+          rm -rf out && mkdir -p out/getfran-adblock
+          cp -r dist/. out/getfran-adblock/
+          (cd out && zip -qr "../getfran-adblock-$VERSION.zip" getfran-adblock)
+          node scripts/release-notes.mjs "$VERSION" > notes.md
+          ls -l "getfran-adblock-$VERSION.zip"
+          cat notes.md
+
+      - name: Release
+        if: env.SKIP != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "v$VERSION" "getfran-adblock-$VERSION.zip" --title "getFran AdBlock $VERSION" --notes-file notes.md

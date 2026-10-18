@@ -1,65 +1,113 @@
-# getFran AdBlock — bloqueador de anuncios para Chrome (Twitch y YouTube)
+# getFran AdBlock
 
-Extensión de Chrome (Manifest V3) que bloquea anuncios en cualquier web con las listas de AdGuard y
-trata aparte YouTube (poda del player response) y Twitch (intercambio de stream en el worker del
-player, portado de Purple Ads Blocker). Es una
-**carcasa**: los rulesets, los scriptlets y los argumentos vienen de piezas que mantienen otros
-(`@adguard/dnr-rulesets`, `@adguard/scriptlets`, uAssets, Purple Ads Blocker) y una rotura se
-arregla con un build, no investigando. Solo para el Chrome de Fran, cargada descomprimida.
+A Chrome extension (Manifest V3) that blocks ads on every website with AdGuard's filter lists, and handles
+YouTube and Twitch separately: YouTube's ads are pruned from the player responses with AdGuard's scriptlets,
+and Twitch's stitched ads are replaced with a clean copy of the live stream, the technique of Purple Ads
+Blocker.
 
-Croquis y motivación: `ProjectKit/ideas/bloqueador-de-anuncios-para-chrome-twitch-y-youtube.md`.
+It is a shell: nothing in this repository decides what an ad is. The rulesets, the cosmetic rules, the
+scriptlets and their arguments come from `@adguard/dnr-rulesets`, `@adguard/scriptlets`, uBlock Origin's
+`quick-fixes.txt` and Purple Ads Blocker, and a new release is mostly a new snapshot of those lists.
 
-## Uso
+It is not on the Chrome Web Store. You download a zip from the [Releases](../../releases) page and load it
+unpacked; the extension tells you when a newer release exists.
+
+## Install
+
+1. Download `getfran-adblock-<version>.zip` from the [latest release](../../releases/latest) and extract it.
+   Keep the extracted `getfran-adblock` folder somewhere permanent: Chrome loads the extension from there.
+2. Open `chrome://extensions`, turn on **Developer mode** (top right).
+3. Click **Load unpacked** and pick the `getfran-adblock` folder.
+
+Chrome may warn at startup that an extension is running in developer mode. That is how every unpacked
+extension works; there is no way around it outside the Web Store.
+
+Chrome 128 or newer. Playwright's Chromium and other Chromium browsers that accept unpacked extensions work too.
+
+## Update
+
+Unpacked extensions do not update themselves. Once a day the extension asks GitHub whether a newer release
+exists (one request to `github.com/getFran/AdBlock/releases/latest`, nothing else is sent). When there is
+one, the icon shows a red **NEW** badge and the popup links to the release:
+
+1. Download the new zip and extract it **over the same folder**, replacing everything.
+2. In `chrome://extensions`, click the reload icon of getFran AdBlock (or restart Chrome).
+
+Your switched-off sites are kept: the extension keeps the same identity as long as it is loaded from the
+same folder.
+
+## Switching it off on a site
+
+Click the icon and **Switch off for &lt;site&gt;**. That site and its subdomains get no network blocking, no
+cosmetic CSS and none of the YouTube or Twitch scripts, and the tab reloads. The popup lists the sites
+switched off and switches them back on.
+
+## What it does, in short
+
+- **Every site:** 8 AdGuard rulesets as static declarativeNetRequest rules (Base with EasyList, Tracking
+  Protection, Spanish/Portuguese, URL Tracking, Cookie Notices, Popups, Other Annoyances, Widgets; about
+  205,000 rules) plus their element-hiding rules as CSS, injected at `document_start`.
+- **YouTube:** AdGuard Base's YouTube rules compiled with `@adguard/scriptlets` (the player response loses
+  its ad placements before the player sees it), the rules uBlock Origin keeps in `quick-fixes.txt`, and four
+  local rules that remove the payload of the "Ad blockers are not allowed on YouTube" dialog.
+- **Twitch:** inside the player's worker, every playlist that carries stitched ad segments is swapped for the
+  same-quality playlist of a backup stream (a token of another player type) while the break lasts; the
+  client-side ad request is answered empty. Ported from Purple Ads Blocker. A guard restarts the player if
+  the picture freezes after a break.
+
+## Privacy
+
+Everything runs inside your browser. The extension makes no request of its own except the daily version
+check against GitHub, which carries no data about you. There is no account, no telemetry, no remote
+configuration. A release build has no console output and leaves nothing on the page.
+
+Permissions: `declarativeNetRequest` (the blocking), `scripting` and `storage` (the per-site switch),
+`alarms` (the daily check), and access to all sites, which an ad blocker needs.
+
+## Known limits
+
+- Extended CSS rules (`#?#`, `:contains()`, `:upward()`...) are not supported: about 5,300 cosmetic rules are
+  skipped. Standard `:has()` works.
+- A YouTube account that Google has flagged may still see enforcement dialogs; the rules remove the payload
+  the dialog is built from, but YouTube changes this often. New releases bring the latest rules.
+- Twitch's stitched breaks only happen when Twitch inserts them; the swap has been verified on real breaks,
+  but Twitch changes its player too.
+
+## Development
+
+Node 22 or newer.
 
 ```
 npm install
-npm run build        # -> dist/
+npm run build              # development build -> dist/ (records, diagnostics, console; permissions downloads + feedback)
+npm run build:release      # the build that is released: none of that
+npm run vendor             # refresh vendor/: uAssets quick-fixes and the live AdGuard Base YouTube rules
+npm test                   # the pure Twitch playlist pieces, no browser
+npm run smoke              # loads dist/ in Playwright's Chromium and checks manifest, content scripts, alarm, pages
+npm run verify -- generic|youtube|twitch|all   # real pages in Playwright's Chromium (development build)
 ```
 
-En `chrome://extensions`: modo desarrollador → "Load unpacked" → la carpeta `dist/`. Actualizar
-listas = `npm install @adguard/dnr-rulesets@latest @adguard/scriptlets@latest && npm run vendor &&
-npm run build` y recargar la extensión. Si lo que falla es YouTube, `npm run vendor && npm run build`
-basta: las reglas de YouTube de AdGuard se toman de su lista viva (`vendor/adguard-base-youtube.txt`),
-no del paquete npm, que va semanas por detrás.
+Updating the lists by hand: `npm install @adguard/dnr-rulesets@latest @adguard/scriptlets@latest && npm run vendor
+&& npm run build`. For YouTube alone `npm run vendor && npm run build` is enough: AdGuard's YouTube rules are
+taken from the live filter because the npm package lags it by weeks.
 
-Verificación en páginas reales (Chromium de Playwright, perfil nuevo cada vez):
+### Releases
 
-```
-npm run verify -- generic      # marca.com, elmundo.es, as.com: peticiones bloqueadas + hojas cosméticas
-npm run verify -- youtube      # player response sin adPlacements, 25 s sin UI de anuncio, navegación interna
-npm run verify -- twitch --seconds=900 --twitch=auronplay,ibai   # vigila canales hasta cazar un corte cosido y lo evalúa
-node test/twitch-playlists.mjs                                   # piezas puras del worker, sin navegador
-```
+`.github/workflows/release.yml` builds `getfran-adblock-<version>.zip` with `npm run build:release` and
+publishes a GitHub release:
 
-## Desactivar en un sitio
+- on a tag `v*`: the version of the tag, with the lists committed at that tag;
+- every Monday (and on demand): the latest `@adguard/dnr-rulesets`, `@adguard/scriptlets` and vendored
+  snapshots. If any list changed, it commits them to `main`, bumps the patch version, tags and releases.
+  If nothing changed, it does nothing.
 
-Icono del perro en la barra → "Desactivar en <host>". Quita en ese host y sus subdominios los bloqueos
-de red, el CSS cosmético y los scripts de YouTube y Twitch, y recarga la pestaña. `getfran.dev` viene
-desactivado de fábrica porque una regla de AdGuard (`||umami.`) rompe el panel de Umami autoalojado.
+The development build keeps the evidence tooling: a record of each Twitch break and of YouTube's enforcement
+dialog is written to `Downloads/AdBlock/`, `window.__adblockTwitch` and `window.__adblockYoutube` expose the
+state, and `test/verify.mjs` reads the matched rules. None of that is in a release.
 
-## Estado (2026-10-18)
+## License and credits
 
-- Genérico y YouTube: funcionando y verificados. El popup "Ad blockers are not allowed on YouTube"
-  (2026-10-18) solo sale en cuentas marcadas y no se reproduce con perfil nuevo: desde ese día cuatro
-  reglas locales podan su carga (`auxiliaryUi.messageRenderers.enforcementMessageViewModel`) además de la
-  regla de AdGuard que anula la detección, y la extensión deja un `Descargas\AdBlock\youtube-<fecha>-
-  <motivo>.json` cuando aparece el popup o la pantalla de error, con los player responses tal como
-  llegaron. El snackbar "¿Tienes interrupciones?" lo tapan dos reglas de uBlock Origin que entran al
-  build, y las reglas de YouTube de AdGuard se refrescan con `npm run vendor` desde la lista viva.
-- Twitch: bloqueo por intercambio de stream (site → popout → frontpage → mobile_web → embed → autoplay
-  360p), blank segment para lo que ningún backup cubra, y `edge.ads.twitch.tv` respondido vacío. Un
-  corte cosido solo se verifica cuando Twitch lo mete: si la prueba no ve ninguno, lo dice. Primer
-  midroll real el 2026-10-16 (pausenpaii, 45 s): playlists limpias (25/25 polls con backup a 1080p60)
-  pero la imagen se quedó congelada hasta un F5 con el audio siguiendo; desde entonces el guardián de la
-  página reinicia el player cuando los fotogramas dejan de pintarse. El anuncio client-side se corta
-  desde el primer día. Quinto midroll real el 2026-10-18 (ohnepixel, 74 s de segmentos de anuncio a
-  1080p60, 40 playlists intercambiadas entre site y popout): sin parón, sin imagen congelada, sin UI de
-  anuncio y sin bajar de resolución.
-
-Cuando salte un anuncio con la extensión cargada no hay que copiar nada: la extensión deja sola un
-`Descargas\AdBlock\twitch-<fecha>-<motivo>.json` (tras cada corte cosido y cuando la UI de anuncio de
-Twitch se queda visible; a mano, `window.__adblockTwitch.save()` en la consola). Basta decir la hora
-para que la siguiente sesión lo lea. Dentro van las muestras del vídeo, el log, los eventos y las
-últimas playlists del player y de los backups.
-
-> Repo privado y debe seguir siéndolo.
+GPL-3.0 (`LICENSE`): the extension bundles AdGuard's filter lists and scriptlets and uBlock Origin's uAssets,
+all GPL-3.0. The Twitch logic is ported from [Purple Ads Blocker](https://github.com/arthurbolsoni/Purple-adblock)
+(Apache-2.0) and the blank segment and player reload come from [TwitchAdSolutions](https://github.com/pixeltris/TwitchAdSolutions)
+(MIT). `THIRD_PARTY_NOTICES.md` has the details and the license texts.

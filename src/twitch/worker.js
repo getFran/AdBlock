@@ -44,6 +44,9 @@
   scope.__adblockHooked = true;
 
   const TAG = '[AdBlock/twitch:worker]';
+  // true in a release build (build.mjs --release): no console, no playlists kept for a record, no exports for the tests.
+  // typeof because test/twitch-playlists.mjs runs this file unbundled, where __RELEASE__ is not defined
+  const RELEASE = typeof __RELEASE__ !== 'undefined' && __RELEASE__;
   const request = scope.fetch.bind(scope);
   const CLIENT_ID = 'kimne78kx3ncx6brgo4mv6wki5h1ko';
   const GQL_URL = 'https://gql.twitch.tv/gql#origin=twilight';
@@ -151,12 +154,14 @@
     }
   };
   const log = (...args) => {
+    if (RELEASE) return;
     console.log(TAG, ...args);
     post({ adblock: 'log', args: args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a))) });
   };
   const emit = (type, data) => post({ adblock: 'event', event: { type, at: Date.now(), ...(data || {}) } });
   const RECENT_KEEP = 80;
   const remember = (kind, url, text) => {
+    if (RELEASE) return;
     state.recent.push({ at: Date.now(), kind, url: String(url).slice(0, 160), text });
     if (state.recent.length > RECENT_KEEP) state.recent.splice(0, state.recent.length - RECENT_KEEP);
   };
@@ -954,7 +959,7 @@
   function endBreak(now) {
     const b = state.break;
     if (!b) return;
-    const info = { ...b, endedAt: now, durationMs: now - b.at, blankAnswered: state.blankAnswered, playlists: state.recent.filter((r) => r.at >= b.at - 10000) };
+    const info = { ...b, endedAt: now, durationMs: now - b.at, blankAnswered: state.blankAnswered, playlists: RELEASE ? [] : state.recent.filter((r) => r.at >= b.at - 10000) };
     log('AD BREAK over after ' + Math.round(info.durationMs / 1000) + ' s: polls=' + b.polls + ' swapped=' + b.swapped + ' held=' + (b.held || 0) + ' merged=' + b.merged + ' blanked=' + b.blanked + ' (uris listed ' + b.blankListed + ', answered blank so far ' + state.blankAnswered + ') backups=' + (b.backups.map((x) => x.type + '@' + x.quality).join(' > ') || 'none'));
     post({ adblock: 'break-end', info });
   }
@@ -1220,7 +1225,7 @@
   };
 
   // the pure pieces, for test/twitch-playlists.mjs
-  scope.__adblockTwitchWorker = { detectAds, readSegments, isCleanBackup, mergeWithBackups, blankAds, stripAdDateranges, newestNumber, sequenceReference, sequenceShift, shiftSequence, parseVariants, pickVariant, summarize };
+  if (!RELEASE) scope.__adblockTwitchWorker = { detectAds, readSegments, isCleanBackup, mergeWithBackups, blankAds, stripAdDateranges, newestNumber, sequenceReference, sequenceShift, shiftSequence, parseVariants, pickVariant, summarize };
 
   log('worker hook installed');
 })(self);

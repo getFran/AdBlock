@@ -56,4 +56,9 @@ export default {
   twitch: {
     hosts: ['twitch.tv'],
   },
+  release: {
+    // The GitHub repository the extension is distributed from (README: a zip per release, loaded unpacked). The update
+    // check in src/background.js reads <repo>/releases/latest; .github/workflows/release.yml publishes there.
+    repo: 'getFran/AdBlock',
+  },
 };

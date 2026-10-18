@@ -20,6 +20,9 @@
 //      window.__adblockTwitch (breaks, events, blank URIs, csaiBlocked, log) as the evidence when something fails.
 //   4. After a break, if the video stands still for a few seconds while not paused, one pause/play and, if still
 //      stuck, one soft reload of the player. Nothing otherwise: the worker's playlists are what keep it playing.
+//
+// A release build (__RELEASE__, build.mjs --release) keeps 1, 2, the GQL/pause/play answers of 3 and the guard of 4;
+// the console, window.__adblockTwitch, the samples and the record are development only.
 
 const WORKER_CODE = __WORKER_CODE__;
 const TAG = '[AdBlock/twitch]';
@@ -39,8 +42,8 @@ const RECORD_MAX_BYTES = 1200000; // the record travels as a data URL to chrome.
 const AD_UI_SELECTORS = ['[data-a-target="video-ad-label"]', '[data-a-target="video-ad-countdown"]', '.video-ad-label', '[data-test-selector="ad-banner-default-text"]', '[data-a-target="player-ad-notice"]', '[data-a-target="ad-banner-default-text"]', '.stream-display-ad'];
 
 (function () {
-  if (window.__adblockTwitch) return;
-  const state = (window.__adblockTwitch = {
+  if (!__RELEASE__ && window.__adblockTwitch) return;
+  const state = {
     workers: 0,
     hookedWorkers: 0,
     gqlHeaders: [],
@@ -56,13 +59,15 @@ const AD_UI_SELECTORS = ['[data-a-target="video-ad-label"]', '[data-a-target="vi
     saves: [],
     version: __EXT_VERSION__,
     log: [],
-  });
+  };
+  if (!__RELEASE__) window.__adblockTwitch = state;
   const originalFetch = window.fetch;
   const NativeWorker = window.Worker;
   const workers = new Set();
   let knownHeaders = {};
 
   function log(...args) {
+    if (__RELEASE__) return;
     const line = args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ');
     state.log.push(new Date().toISOString().slice(11, 23) + ' ' + line);
     if (state.log.length > 3000) state.log.splice(0, state.log.length - 3000);
@@ -70,10 +75,12 @@ const AD_UI_SELECTORS = ['[data-a-target="video-ad-label"]', '[data-a-target="vi
   }
   // the worker's own lines (already on the console from the worker) only go to the record
   function record(...args) {
+    if (__RELEASE__) return;
     state.log.push(new Date().toISOString().slice(11, 23) + ' [worker] ' + args.join(' '));
     if (state.log.length > 3000) state.log.splice(0, state.log.length - 3000);
   }
   function emit(type, data) {
+    if (__RELEASE__) return;
     state.events.push({ type, at: Date.now(), ...(data || {}) });
     if (state.events.length > 2000) state.events.splice(0, state.events.length - 2000);
   }
@@ -453,28 +460,30 @@ const AD_UI_SELECTORS = ['[data-a-target="video-ad-label"]', '[data-a-target="vi
         record(...(data.args || []));
         break;
       case 'event':
-        if (data.event) {
+        if (!__RELEASE__ && data.event) {
           state.events.push(data.event);
           if (state.events.length > 2000) state.events.splice(0, state.events.length - 2000);
         }
         break;
       case 'classes':
+        if (__RELEASE__) break;
         for (const c of data.classes || []) state.classes[c] = (state.classes[c] || 0) + 1;
         break;
       case 'master':
-        state.masters.push(data.info);
+        if (!__RELEASE__) state.masters.push(data.info);
         break;
       case 'break':
-        state.breaks.push(data.info);
+        if (!__RELEASE__) state.breaks.push(data.info);
         guardBreak(worker, data.info);
         break;
       case 'break-end':
-        state.breakEnds.push(data.info);
+        if (!__RELEASE__) state.breakEnds.push(data.info);
         if (guard) guard.endedAt = Date.now();
         else guardBreak(worker, data.info);
-        setTimeout(() => save('break'), SAVE_AFTER_BREAK_MS);
+        if (!__RELEASE__) setTimeout(() => save('break'), SAVE_AFTER_BREAK_MS);
         break;
       case 'dump': {
+        if (__RELEASE__) break;
         const pending = pendingDumps.get(data.name);
         if (!pending) break;
         if (data.dump && data.dump.recent && data.dump.recent.length) pending.finish(data.dump);
@@ -482,6 +491,7 @@ const AD_UI_SELECTORS = ['[data-a-target="video-ad-label"]', '[data-a-target="vi
         break;
       }
       case 'blank':
+        if (__RELEASE__) break;
         for (const uri of data.uris || []) if (!state.blankUris.includes(uri)) state.blankUris.push(uri);
         if (state.blankUris.length > 500) state.blankUris.splice(0, state.blankUris.length - 500);
         break;
@@ -560,8 +570,10 @@ const AD_UI_SELECTORS = ['[data-a-target="video-ad-label"]', '[data-a-target="vi
   }
   window.Worker = HookedWorker;
 
-  state.save = (reason) => save(reason || 'manual');
-  setInterval(sample, 1000);
+  if (!__RELEASE__) {
+    state.save = (reason) => save(reason || 'manual');
+    setInterval(sample, 1000);
+  }
 
   log('page hook installed');
 })();

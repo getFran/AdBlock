@@ -1,8 +1,10 @@
 # CLAUDE.md — Bloqueador de anuncios para Chrome (Twitch y YouTube)
 
 Extensión de Chrome (Manifest V3) que bloquea anuncios en cualquier web con las listas de AdGuard y
-trata aparte YouTube y Twitch. Solo para el Chrome de Fran, cargada descomprimida en modo
-desarrollador: ni Chrome Web Store ni Portainer. La infraestructura compartida está en el
+trata aparte YouTube y Twitch. Se distribuye desde GitHub (repo **público** desde el 2026-10-18): un zip
+por release que se carga descomprimido; ni Chrome Web Store ni Portainer. **Todo lo que ve otra persona
+va en inglés** (README, popup, avisos, notas de release, mensajes de commit); este fichero y las memorias
+son notas internas y siguen en español. La infraestructura compartida está en el
 `CLAUDE.md` de `PyCharm Projects`, que se carga solo: **no la dupliques aquí**.
 
 Croquis de decisión: `ProjectKit/ideas/bloqueador-de-anuncios-para-chrome-twitch-y-youtube.md`.
@@ -16,9 +18,11 @@ alcance (carcasa que consume piezas mantenidas por otros), no con otro.
 | Nombre en Chrome | **getFran AdBlock** (el `name` del manifest; pedido el 2026-10-15) |
 | Descripción | «Blocks ads on every website, including YouTube and Twitch.» (2026-10-17, en inglés y simple para que sea distribuible) |
 | Icono | `icons/dogwifhatnike.png` (elección de Fran, 2026-10-15); los `icons/icon-{16,32,48,128}.png` están renderizados y commiteados, el build solo los copia. Para cambiarlo, regenerar los cuatro tamaños (recorte cuadrado centrado) y commitearlos |
-| Repo | `getFran/AdBlock` (privado — **debe seguirlo**) |
+| Repo | `getFran/AdBlock`, **público** desde el 2026-10-18 (Fran: «lo que tú veas mejor»; antes privado). Historial auditado: sin secretos; `.claude/` y este fichero se quedan dentro |
 | Rama | `main` |
-| Despliegue | **ninguno**: `npm run build` deja `dist/`, que se carga con "Load unpacked" |
+| Versión | `1.0.0` en `package.json`; la Action construye la del tag (`EXT_VERSION`) |
+| Licencia | **GPL-3.0** (`LICENSE`): las listas y scriptlets de AdGuard y uAssets son GPL-3.0; Purple es Apache-2.0 y vaft MIT, atribuidos en `THIRD_PARTY_NOTICES.md`, que va dentro del zip |
+| Despliegue | **GitHub Releases**: `.github/workflows/release.yml` publica `getfran-adblock-<versión>.zip` (carpeta `getfran-adblock/` dentro, nombre fijo para descomprimir encima y conservar el ID) al empujar un tag `v*`, y los lunes si hay listas nuevas. En local, `npm run build` deja `dist/` para "Load unpacked" |
 
 ## Decisiones tomadas (2026-10-15)
 
@@ -107,6 +111,22 @@ alcance (carcasa que consume piezas mantenidas por otros), no con otro.
   (`params=eAFgAQ`; comprobado con un hook de `TextEncoder.encode`, que es por donde sale el cuerpo:
   Playwright lo ve como `postData` nulo) y el servidor ya no devuelve `adPlacements`. Memoria
   `youtube-popup-enforcement-y-listas-vivas`.
+- **Distribución por GitHub, sin nada de depuración en lo que se reparte (2026-10-18).** Fran quería repartirla
+  desde su repo y que la extensión avisara de versiones nuevas. Piezas: (1) `npm run build:release` (`--release`,
+  `define __RELEASE__` + `minifySyntax` para que esbuild pode las ramas): sin registro de Twitch ni de YouTube, sin
+  `bridge.js`, sin consola, sin `window.__adblockTwitch`/`__adblockYoutube` ni exports del worker, sin
+  `getfran.dev` desactivado de fábrica (eso es solo del build de desarrollo), y el manifest sin `downloads` ni
+  `declarativeNetRequestFeedback`; el build de desarrollo sigue igual que antes. El worker lee `__RELEASE__` con
+  `typeof` porque `test/twitch-playlists.mjs` lo ejecuta sin bundlear. (2) **Aviso de versión:** el service worker
+  pide `github.com/getFran/AdBlock/releases/latest` una vez al día (`chrome.alarms`, permiso sin aviso) y lee la
+  versión de la URL final (`/releases/tag/vX.Y.Z`: sin API ni cuota); si es mayor que la del manifest, badge rojo
+  `NEW` y el popup enlaza la release; el popup también comprueba al abrirse (con 6 h de margen) y tiene "Check for
+  updates". (3) **Action** `release.yml`: con un tag `v*` construye esa versión; los lunes instala
+  `@adguard/*@latest`, `npm run vendor`, y si algo cambió (ignorando la fecha de los encabezados) commitea a
+  `main`, sube el patch, etiqueta y publica; si no, no hace nada. (4) **GPL-3.0** por las listas. (5) Popup en
+  inglés. `npm run smoke` carga `dist/` en Playwright y comprueba manifest, permisos, content scripts, alarma y que
+  los globales no estén en la release. **Pendiente que Fran decida:** el icono es una imagen del meme dogwifhat y no
+  está claro quién tiene sus derechos; en un repo público conviene uno propio.
 - **Toolchain:** Node ≥ 22 (en la máquina hay 24) con esbuild. Fuente en `src/` en JavaScript
   plano; `build.mjs` genera `dist/` (ignorado en git). `npm run build` funciona desde un clon limpio
   con solo `npm install`: no descarga nada de la red.
@@ -130,11 +150,13 @@ build.mjs        lee build.config.mjs y escribe dist/:
   youtube.js     MAIN world: 35 reglas compiladas (27 del Base de AdGuard, 4 de uAssets, 4 locales) y el registro
                  (src/youtube/record.js: últimos /player y /next tal como llegan, popup y pantalla de error)
   twitch.js      MAIN world: hook de Worker/fetch/XHR de la página con src/twitch/worker.js inlined (el bloqueo)
-  bridge.js      ISOLATED (twitch.tv y YouTube): relé página -> service worker de los registros (chrome.downloads -> Descargas\AdBlock\)
+  bridge.js      ISOLATED (twitch.tv y YouTube), SOLO build de desarrollo: relé página -> service worker de los registros
   background.js  service worker: registra los content scripts (con los sitios desactivados excluidos), aplica las reglas
-                 allowAllRequests del interruptor, escribe los registros de Twitch y da diagnóstico a verify
-  popup.html/js  el interruptor por sitio
+                 allowAllRequests del interruptor, comprueba a diario si hay release nueva (badge NEW) y, en desarrollo,
+                 escribe los registros de Twitch/YouTube (chrome.downloads -> Descargas\AdBlock\) y da diagnóstico a verify
+  popup.html/js  el interruptor por sitio y el aviso de versión nueva (en inglés)
   icons/         el perro con el gorro, en 16/32/48/128
+  LICENSE, THIRD_PARTY_NOTICES.md   copiados del repo: van dentro del zip
   manifest.json
 ```
 
@@ -182,14 +204,19 @@ build.mjs        lee build.config.mjs y escribe dist/:
 
 | | |
 |---|---|
-| `npm run build` | regenera `dist/` (≈1 s) |
+| `npm run build` | regenera `dist/` (≈1 s), build de desarrollo: registros, diagnóstico, consola |
+| `npm run build:release` | el `dist/` que se reparte: sin nada de eso (`EXT_VERSION=1.2.3` fija la versión) |
+| `npm test` | `test/twitch-playlists.mjs`: las piezas puras del worker, sin navegador |
+| `npm run smoke` | carga `dist/` en el Chromium de Playwright y comprueba manifest, permisos, content scripts, alarma y globales (vale para los dos builds) |
 | `npm run vendor` | refresca `vendor/uassets-quick-fixes.txt` (GitHub) y `vendor/adguard-base-youtube.txt` (las reglas de YouTube de la lista Base viva de AdGuard); commitéalos |
 | `npm run verify -- generic\|youtube\|twitch\|all` | carga `dist/` en un Chromium con Playwright y comprueba en páginas reales (`generic` incluye el interruptor por sitio sobre umami.getfran.dev; `youtube` comprueba las reglas anti-popup, los selectores del snackbar y que el registro llega a `Descargas\AdBlock\`) |
 | `npm run verify -- twitch --seconds=900 --twitch=<canal>[,<canal>...]` | vigila cada canal hasta 900 s y para 30 s después del primer corte cosido completo; imprime por corte backups usados, URIs de anuncio en la red, parón más largo, UI de anuncio y si el vídeo sigue tras el corte |
 | `node test/twitch-playlists.mjs` | comprobaciones sin navegador de las piezas puras del worker sobre playlists sintéticas |
 
 **Actualizar las listas** = `npm install @adguard/dnr-rulesets@latest @adguard/scriptlets@latest`,
-`npm run vendor`, `npm run build`, recargar en `chrome://extensions`. Si YouTube o Twitch se
+`npm run vendor`, `npm run build`, recargar en `chrome://extensions`. **La Action lo hace sola los lunes** y publica
+release si algo cambió (commit de `github-actions[bot]` en `main`: hay que hacer `git pull` antes de tocar nada).
+Para publicar a mano una versión: subir `version` en `package.json`, commit, `git tag vX.Y.Z && git push origin vX.Y.Z`. Si YouTube o Twitch se
 rompen, eso es lo primero: la carcasa se arregla con un build, no investigando. **Para YouTube basta
 `npm run vendor && npm run build`**: trae las reglas de hoy de AdGuard (lista viva) y de uBO sin
 esperar a que AdGuard publique el paquete npm, que tarda semanas.
