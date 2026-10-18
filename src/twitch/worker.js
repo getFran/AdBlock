@@ -60,7 +60,7 @@
   // fresh token, 5 s left the pool empty 5 times in one 84 s break (esportmaniacos, 2026-10-16) and the player went to
   // 360p each time. A fresh token is ready in 0.3 s: 2 s is enough to let it answer
   const CONTAMINATED_MS = 2000;
-  const HOLD_MS = 3000; // a same-quality backup playlist this fresh is given again rather than dropping to 360p
+  const HOLD_MS = 3000; // a same-quality backup playlist this fresh is given again rather than dropping to 360p or restarting the player for backups one number behind
   const BLANK_TTL_MS = 120000; // F-14: an ad URI is answered blank this long after the last poll that listed it
   const PREWARM_MS = 60000; // F-19: at most one prewarm per this many ms
   const RECOVERING_MS = 10000; // ad-break.ts: clean polls this long after a break bring the state back to idle
@@ -979,6 +979,19 @@
     return out;
   }
 
+  // the last same-quality backup playlist, given again while it is fresh (HOLD_MS): the player sees a poll without a
+  // new segment, as live HLS has anyway, instead of a drop to 360p or a restart. null when there is none to give
+  function holdLast(target, now, why) {
+    const held = state.lastBackup;
+    if (!held || now - held.at > HOLD_MS || qualityName(held.quality) !== qualityName(target.quality)) return null;
+    log(why + ': the last ' + (target.quality || '?') + ' playlist (' + Math.round((now - held.at) / 100) / 10 + ' s old) given again');
+    emit('backupHeld', { ageMs: now - held.at, why });
+    const b = state.break;
+    if (b) b.held = (b.held || 0) + 1;
+    state.source = held.source;
+    return held.text;
+  }
+
   async function playlistFor(text, url) {
     if (!state.channel) return text;
     const summary = summarize(text);
@@ -1039,7 +1052,16 @@
         return useBackup(backup, aligned, source);
       }
     }
-    if (behind) return useBackup(behind.backup, behind.aligned, behind.source);
+    if (behind) {
+      // every clean backup numbers below the last delivery (2026-10-18, ibai: the four tokens taken after popout announced
+      // its break were one segment behind): given one of them, F-24 would restart the player, which flushes its buffer
+      // and resets its clock for a lag the backups close by the next poll. The last playlist is given again instead
+      // while it is fresh; one poll without a new segment is ordinary live HLS. At parity nothing restarts: used as is
+      const newest = newestNumber(behind.aligned.text);
+      const kept = newest != null && newest < state.delivered.newest ? holdLast(target, now, 'every clean backup lists nothing past ' + state.delivered.newest) : null;
+      if (kept != null) return kept;
+      return useBackup(behind.backup, behind.aligned, behind.source);
+    }
     if (announced) {
       // its break is announced past its last segment: the same treatment as the page's own announcement (prefetch,
       // DISCONTINUITY and MAP of the ad removed, the ad URIs answered blank, the ad DATERANGEs stripped)
@@ -1053,14 +1075,8 @@
         return useBackup({ ...announced, data: aligned.text }, aligned, source);
       }
     }
-    const held = state.lastBackup;
-    if (held && now - held.at <= HOLD_MS && qualityName(held.quality) === qualityName(target.quality)) {
-      log('no clean backup at ' + (target.quality || '?') + ': the last one (' + Math.round((now - held.at) / 100) / 10 + ' s old) given again instead of 360p');
-      emit('backupHeld', { ageMs: now - held.at });
-      if (b) b.held = (b.held || 0) + 1;
-      state.source = held.source;
-      return held.text;
-    }
+    const kept = holdLast(target, now, 'no clean backup at ' + (target.quality || '?'));
+    if (kept != null) return kept;
     if (low) {
       const source = withoutQuery(low.variant.url);
       const aligned = alignSequence(low.data, low.variant, text);

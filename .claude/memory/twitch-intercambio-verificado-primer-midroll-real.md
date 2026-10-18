@@ -1,6 +1,6 @@
 ---
 name: twitch-intercambio-verificado-primer-midroll-real
-description: Los cinco primeros midrolls reales con el intercambio activo en el Chrome de Fran (2026-10-16 a 18): todos los polls con anuncio se sirvieron con backups a la calidad del player, pero en uno (esportmaniacos, 84 s, la última pestaña antes de su F5) la cadena cayó cinco veces a autoplay 360p porque los cinco tipos web venían con anuncios a la vez, y Fran vio la imagen congelada hasta F5; el cuarto (nissaxter) se vio perfecto y el quinto (ohnepixel, 74 s de anuncio a 1080p60, ya con la cadena del 17) fue limpio del todo: 40/40 intercambios entre site y popout, sin 360p, sin parón, fotogramas creciendo. De ahí: contaminación de 2 s en vez de 5, el backup que solo anuncia su corte se usa saneado, se repite la última playlist de la misma calidad antes de bajar a 360p, y el guardián reinicia por imagen congelada.
+description: Los siete primeros midrolls reales con el intercambio activo en el Chrome de Fran (2026-10-16 a 18): todos los polls con anuncio se sirvieron con backups a la calidad del player, pero en uno (esportmaniacos, 84 s, la última pestaña antes de su F5) la cadena cayó cinco veces a autoplay 360p porque los cinco tipos web venían con anuncios a la vez, y Fran vio la imagen congelada hasta F5; el cuarto (nissaxter) se vio perfecto y el quinto (ohnepixel, 74 s de anuncio a 1080p60, ya con la cadena del 17) fue limpio del todo: 40/40 intercambios entre site y popout, sin 360p, sin parón, fotogramas creciendo; el sexto y el séptimo (ibai, 107 y 52 s a 1080p60) igual de limpios salvo un reinicio evitable del player por backups un número por detrás, que desde el 18 se cubre repitiendo la última playlist. De ahí: contaminación de 2 s en vez de 5, el backup que solo anuncia su corte se usa saneado, se repite la última playlist de la misma calidad antes de bajar a 360p, y el guardián reinicia por imagen congelada.
 metadata:
   type: project
 ---
@@ -61,6 +61,25 @@ antes hasta 20 s después, `videoWidth` 1920 las 177 muestras de la ventana, **n
 fotograma repetido** (16.988 → 27.367), `dropped` 1 → 3, UI de anuncio 0, reinicios 0, pestaña visible.
 La petición client-side (`edge.ads.twitch.tv`, bp=midroll) respondida vacía 2 min antes. Fran no notó nada.
 
+**El sexto y el séptimo (2026-10-18 18:00 y 18:45 UTC, ibai, 1080p60):** `twitch-2026-10-18T18-02-14-730Z-break.json`
+y `twitch-2026-10-18T18-46-24-300Z-break.json`. MIDROLL pod 1 los dos, anunciados 2 s antes (prefetch quitadas,
+nunca pedidas). El primero: 107 s según el worker (segmentos de anuncio en la playlist de la página unos 50 s y
+luego `twitch-maf-ad` hasta el final; la petición client-side respondida vacía), 33 polls, **33 `swapped`, 0
+`held`/`merged`/`blanked`**, cadena `site` (14 s) → `popout` (28 s) → `site`, 1920 px las 136 muestras, ningún
+parón, ningún fotograma repetido, UI de anuncio 0. Pero a los 42 s, cuando `popout` anunció su corte y se
+pidieron los cuatro tokens web nuevos, **los cuatro iban un número por detrás de lo último entregado (798 frente
+a 799)**: el worker usó `site` igualmente ("kept as the last choice") y el F-24 reinició el player por retroceso
+de secuencia, `Idle → Ready → Buffering → Playing` en 0,7 s y `currentTime` a 0. Un parpadeo evitable: dos
+segundos después `site` ya listaba 799 y 800. El segundo: 52 s, **31/31 `swapped`**, misma cadena site → popout →
+site con desplazamiento +1, `mobile_web` volvió con `ads` y no se usó, 1920 px las 82 muestras, ningún parón,
+0 reinicios. Patrón en los dos: el backup `site` anuncia su propio corte a los 14 s de entrar y `popout` a los
+22-28 s. **Cambio del 18:** cuando todos los backups limpios van por detrás del último número entregado, antes de
+usar uno (y reiniciar) se repite la última playlist de la misma calidad si tiene menos de 3 s (`holdLast`, el
+mismo contador `held`); al siguiente poll están a la par y no hay retroceso. Ojo con la evidencia: el recorte del
+registro a 1,2 MB deja solo las **10 últimas** playlists (`worker.recent` y `breakEnds[].playlists`), así que en
+un corte largo las del momento interesante ya no están; si hace falta verlas, comprimir el registro
+(`CompressionStream`) antes de mandarlo al service worker.
+
 **Cambios (2026-10-16 y 17):** `blankAds` quita también el `DISCONTINUITY` y el `MAP` posteriores a un
 corte anunciado; las muestras llevan `frames` (`getVideoPlaybackQuality().totalVideoFrames`),
 `dropped`, `videoWidth`, `error`, nº de `<video>` y visibilidad; el guardián vigila desde el primer
@@ -83,7 +102,8 @@ futuro tiene que mirar `frames` y la lista de calidades de `backups`.
 dejan de crecer con `t` avanzando, es el mismo fallo; `restarts[]` dirá si el guardián lo arregló
 (`why: 'picture'`) y en cuánto; `breakEnds[].backups` dirá cuántas veces entró `autoplay@360p` y
 `held` cuántas se repitió una playlist; `events` con `playerState`/`playerError` dan la versión del
-player. Si vuelve a congelarse sin caídas a 360p, la siguiente hipótesis es el salto entre tokens (cada
+player, y un `sequenceRestart` precedido de `backupBehind` es el reinicio por backups atrasados (con el hold del 18
+debería salir `backupHeld` en su lugar). Si vuelve a congelarse sin caídas a 360p, la siguiente hipótesis es el salto entre tokens (cada
 2-4 s una playlist de otro token con URLs distintas para los mismos números): no cambiar de fuente más
 de una vez por N s. Un registro se descarga tras **cada** corte cosido aunque todo vaya bien: que haya
 fichero no significa fallo, significa que hubo corte. Queda por ver un PREROLL de carga y un corte con

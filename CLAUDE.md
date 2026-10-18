@@ -43,16 +43,19 @@ alcance (carcasa que consume piezas mantenidas por otros), no con otro.
   (Purple: 5; con 5 s el pool de 1080p60 se vaciaba y el player bajaba a 360p cinco veces en un corte,
   2026-10-16) el que venga con segmentos de anuncio. El que solo **anuncia** su corte no se descarta: se
   sirve saneado como el aviso de la página (prefetch, `DISCONTINUITY` y `MAP` del anuncio fuera, `DATERANGE`
-  del anuncio fuera) y se le pide token nuevo. Si aun así no hay nada a la calidad del player, se
-  **repite la última playlist** de esa calidad si tiene menos de 3 s (`held`), y solo entonces `autoplay`:
-  un cambio de resolución dentro de la variante es el sospechoso del decodificador atascado. Sin nada, merge por
+  del anuncio fuera) y se le pide token nuevo. Si aun así no hay nada a la calidad del player, o lo que hay
+  va **por detrás** del último número entregado (2026-10-18, ibai: los cuatro tokens nuevos un segmento
+  atrás y el F-24 reinició el player sin necesidad), se **repite la última playlist** de esa calidad si
+  tiene menos de 3 s (`held`), y solo entonces el backup atrasado o `autoplay`: un cambio de resolución
+  dentro de la variante es el sospechoso del decodificador atascado. Sin nada, merge por
   `PROGRAM-DATE-TIME` y, para lo que quede, el **blank segment** de Purple (viene de vaft, MIT, aviso en
   el fichero). `MEDIA-SEQUENCE` del backup alineado a la numeración de la página, `EXT-X-MAP` como lo
   hace Purple en el merge. Fuera de un corte las playlists llegan al player sin tocar. **Ni recorte de
   segmentos ni proxies.** Pause/play solo si hace falta: cuando el número de secuencia retrocede al
-  cambiar de fuente (F-24 de Purple) y, desde la página, si el vídeo lleva 6 s parado tras el corte
-  (pause/play y, si sigue, reload suave); desde el 2026-10-16 el guardián vigila desde el primer poll con
-  anuncio hasta 60 s después del fin y cuenta como parado también que los **fotogramas decodificados**
+  cambiar de fuente (F-24 de Purple; desde el 2026-10-18 solo si no había playlist reciente que repetir) y,
+  desde la página, si el vídeo lleva 6 s parado tras el corte (pause/play y, si sigue, reload suave); desde el
+  2026-10-16 el guardián vigila desde el primer poll con anuncio hasta 60 s después del fin y cuenta como
+  parado también que los **fotogramas decodificados**
   (`getVideoPlaybackQuality`) dejen de crecer con el reloj corriendo, que es lo que Fran vio como
   "congelado hasta F5". El anuncio client-side (`twitch-maf-ad`) se corta respondiendo
   vacío a `edge.ads.twitch.tv` desde `fetch` y XHR de la página; el Base de AdGuard ya lo bloquea por DNR
@@ -199,12 +202,14 @@ sin `adPlacements` (sin la extensión trae 1), no "no vi anuncio".
 
 **Un corte cosido no se puede provocar:** sale cuando Twitch lo mete (en `auronplay` tardó 5 min el
 2026-10-15 por la mañana; esa misma tarde, 2 h 20 min y 23 cargas sin ninguno). Si en la pasada no sale
-ninguno, la prueba lo dice tal cual; hay que repetir con otros canales grandes (`--twitch=a,b,c`). **Cuatro
-midrolls reales el 2026-10-16 y 17** (memoria `twitch-intercambio-verificado-primer-midroll-real`): playlists
+ninguno, la prueba lo dice tal cual; hay que repetir con otros canales grandes (`--twitch=a,b,c`). **Siete
+midrolls reales del 2026-10-16 al 18** (memoria `twitch-intercambio-verificado-primer-midroll-real`): playlists
 limpias en todos, pero en uno de 84 s la cadena cayó cinco veces a 360p y **Fran vio la imagen congelada
 hasta pulsar F5** con el reloj corriendo: `currentTime` no detecta un decodificador atascado, por eso las
 muestras llevan `frames`, el guardián reinicia también por imagen parada y `verify` cuenta "picture frozen"
-como fallo; el cuarto, ya con fotogramas, se vio perfecto. Un registro cae en `Descargas\AdBlock\` tras
+como fallo; el cuarto, ya con fotogramas, se vio perfecto, y los tres siguientes (ohnepixel 74 s, ibai 107 s y
+52 s, todos a 1080p60) limpios: el único artefacto fue un reinicio por retroceso de secuencia con los backups un
+número atrás, cubierto desde el 18 con el `held`. Un registro cae en `Descargas\AdBlock\` tras
 **cada** corte, también cuando va bien. Falta ver un PREROLL de carga.
 
 **Al limpiar navegadores de prueba colgados, nunca `taskkill //IM chrome.exe`:** mata el Chrome de
