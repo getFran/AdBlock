@@ -216,7 +216,11 @@ build.mjs        lee build.config.mjs y escribe dist/:
 **Actualizar las listas** = `npm install @adguard/dnr-rulesets@latest @adguard/scriptlets@latest`,
 `npm run vendor`, `npm run build`, recargar en `chrome://extensions`. **La Action lo hace sola los lunes** y publica
 release si algo cambió (commit de `github-actions[bot]` en `main`: hay que hacer `git pull` antes de tocar nada).
-Para publicar a mano una versión: subir `version` en `package.json`, commit, `git tag vX.Y.Z && git push origin vX.Y.Z`. Si YouTube o Twitch se
+Para publicar a mano una versión: subir `version` en `package.json`, commit, y `node scripts/publish.mjs <PAT>`
+(idempotente: hace público el repo si aún no lo es, crea y empuja el tag, espera la Action y enseña la release; el
+token va por argumento, nunca en el repo). **El clasificador de auto mode deniega hacer público el repo y empujar
+tags** («Create Public Surface») aunque esté autorizado aquí: ese script lo lanza Fran con
+`! node scripts/publish.mjs <PAT>`. Si YouTube o Twitch se
 rompen, eso es lo primero: la carcasa se arregla con un build, no investigando. **Para YouTube basta
 `npm run vendor && npm run build`**: trae las reglas de hoy de AdGuard (lista viva) y de uBO sin
 esperar a que AdGuard publique el paquete npm, que tarda semanas.

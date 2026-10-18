@@ -39,7 +39,10 @@ y que la auditoría de `.claude/` ya se hizo (no hay que repetirla ni preocupars
 
 **How to apply:** nada en español en lo que ve otra persona (popup, README, notas de release, mensajes de commit).
 Nada de depuración fuera de `!__RELEASE__` (en el worker, `RELEASE` vía `typeof`); `npm run smoke` sobre el build
-de release lo comprueba. Para una versión a mano: `version` en `package.json`, commit, tag `vX.Y.Z`, push del tag.
+de release lo comprueba. Para una versión a mano: `version` en `package.json`, commit, y `node scripts/publish.mjs
+<PAT>` (idempotente: abre el repo si sigue privado, crea y empuja el tag, espera la Action y enseña la release; el
+token va por argumento, nunca en el repo). Ese script lo lanza Fran desde la sesión con `!`, como los del router.
+El 2026-10-18 quedó todo commiteado y la apertura del repo y la `v1.0.0` pendientes de que él lo lance.
 Antes de tocar `package.json` o `vendor/`, `git pull`: los lunes puede haber un commit del bot. **Pendiente que
 decida Fran:** el icono es el meme dogwifhat, sin derechos claros, no apto para un repo público a largo plazo.
 Relacionado: [[twitch-intercambio-verificado-primer-midroll-real]] (la evidencia que el build de release ya no
