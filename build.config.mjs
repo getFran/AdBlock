@@ -37,6 +37,21 @@ export default {
       snapshot: 'vendor/uassets-quick-fixes.txt',
       scriptlets: ['json-prune', 'json-prune-fetch-response', 'json-prune-xhr-response', 'adjust-setTimeout'],
     },
+    // Our own lines, in AdGuard syntax, compiled by the same pipelines as the lists above; only what no maintained
+    // list carries. 2026-10-18: the "Ad blockers are not allowed on YouTube" popup (ytd-enforcement-message-view-model)
+    // that Fran saw. Its payload travels in every player response of a flagged account
+    // (auxiliaryUi.messageRenderers.enforcementMessageViewModel) and the app shows it when the player fires
+    // onAbnormalityDetected (base.js of 2026-10-18: a preroll slot that did not play, or the SABR stream saying ads
+    // were due while the client's response has none, "html5_enable_t1_enf_on_sabr"). AdGuard Base neuters that
+    // handler (Promise.then proxy, already in the build); these lines remove the payload itself, the countermeasure
+    // uBO users applied by hand in 2023 and that no list keeps today. The record (src/youtube/record.js) shows
+    // whether a response still carries it.
+    local: [
+      "youtube.com,youtubekids.com,youtube-nocookie.com#%#//scriptlet('set-constant', 'ytInitialPlayerResponse.auxiliaryUi.messageRenderers.enforcementMessageViewModel', 'undefined')",
+      "youtube.com,youtubekids.com,youtube-nocookie.com#%#//scriptlet('json-prune', 'auxiliaryUi.messageRenderers.enforcementMessageViewModel playerResponse.auxiliaryUi.messageRenderers.enforcementMessageViewModel')",
+      "youtube.com,youtubekids.com,youtube-nocookie.com#%#//scriptlet('json-prune-fetch-response', 'auxiliaryUi.messageRenderers.enforcementMessageViewModel playerResponse.auxiliaryUi.messageRenderers.enforcementMessageViewModel', '', '/playlist\\?list=|player\\?|watch\\?[tv]=/')",
+      "youtube.com,youtubekids.com,youtube-nocookie.com#%#//scriptlet('json-prune-xhr-response', 'auxiliaryUi.messageRenderers.enforcementMessageViewModel playerResponse.auxiliaryUi.messageRenderers.enforcementMessageViewModel', '', '/playlist\\?list=|\\/player(?!.*(get_drm_license))|watch\\?[tv]=|get_watch\\?/')",
+    ],
   },
   twitch: {
     hosts: ['twitch.tv'],

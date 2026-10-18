@@ -64,8 +64,8 @@ alcance (carcasa que consume piezas mantenidas por otros), no con otro.
   de la consola: `page.js` muestrea cada segundo el vídeo y la UI de anuncio de Twitch y, 20 s después
   de acabar un corte cosido, cuando esa UI lleva 3 s visible, o a mano (`window.__adblockTwitch.save()`),
   construye un JSON (muestras, eventos, log, estado del worker y sus últimas 80 playlists: las del
-  player, las de los backups y lo entregado) y lo manda por `twitch-bridge.js` (mundo aislado, el único
-  con `chrome.runtime` en twitch.tv) al service worker, que lo escribe con `chrome.downloads` (permiso
+  player, las de los backups y lo entregado) y lo manda por `bridge.js` (mundo aislado, el único
+  con `chrome.runtime` en twitch.tv y en YouTube) al service worker, que lo escribe con `chrome.downloads` (permiso
   `downloads`) en **`Descargas\AdBlock\twitch-<fecha>-<motivo>.json`**. Flujo: Fran dice a qué hora le
   saltó; la sesión lee el fichero más cercano en `C:\Users\javie\Downloads\AdBlock\`. Máximo uno
   automático por minuto; va como data URL, así que se recorta a 1,2 MB (límite de URL de Chrome).
@@ -82,18 +82,28 @@ alcance (carcasa que consume piezas mantenidas por otros), no con otro.
   se usa el interruptor. `npm run verify -- generic` lo comprueba sobre `umami.getfran.dev` (19 peticiones
   bloqueadas con todo activo, 0 y sin hoja cosmética con el sitio desactivado). Permisos nuevos:
   `scripting`, `storage`.
-- **El aviso "los bloqueadores de anuncios no están permitidos / ¿tienes interrupciones?" de YouTube**
-  (Fran lo vio el 2026-10-18) **es un snackbar abajo a la izquierda, no un bloqueo**: el player sigue
-  porque la regla de AdGuard reescribe cada `/youtubei/v1/player` (`params=eAFgAQ`, `lactMilliseconds`,
-  sin `appInstallData`; comprobado desde dentro de la página con un hook de `TextEncoder.encode`, que es
-  por donde sale el cuerpo: Playwright lo ve como `postData` nulo) y el servidor ya no devuelve
-  `adPlacements`; si eso falla, la misma regla rota `8AUB` → `pyv` → `CHANNEL` → `AD_TYPE_INSTREAM` al
-  ver la pantalla de error. Ninguna lista de AdGuard oculta el snackbar; uBO sí, con dos reglas
-  cosméticas de `quick-fixes.txt` (`#toast:has(…yt-notification-action-renderer)` y
-  `.ytSnackbarContainerOpened:has(…)`, esta del 2026-10-15), y por eso el build cosmético toma también las
-  reglas `##` de los hosts de YouTube del snapshot de uAssets. Solo sale en cuentas marcadas: con un perfil
-  nuevo no se reproduce (seis vídeos seguidos sin aviso), así que `verify youtube` comprueba que los dos
-  selectores llegan al CSS de la página. Memoria `youtube-aviso-bloqueadores-snackbar-y-listas-vivas`.
+- **El popup "Ad blockers are not allowed on YouTube"** (`ytd-enforcement-message-view-model`, botones
+  "Allow YouTube Ads" / "Try YouTube Premium"; Fran lo vio el 2026-10-18). Mecanismo, leído en el `base.js`
+  de ese día: el player dispara `onAbnormalityDetected` cuando un slot de preroll no se reprodujo o cuando el
+  stream SABR le dice que tocaban anuncios y su player response no los trae (`html5_enable_t1_enf_on_sabr`:
+  detecta la poda), y la app muestra el popup con la carga que viaja en
+  `auxiliaryUi.messageRenderers.enforcementMessageViewModel` de cada player response de una cuenta marcada.
+  Dos capas: la regla de AdGuard que anula el manejador (proxy de `Promise.then`, ya en el build) y **cuatro
+  reglas locales nuestras** (`build.config.mjs` → `youtube.local`, sintaxis AdGuard, mismo pipeline) que podan
+  esa carga del inline, de `JSON.parse`, de `fetch` y de XHR: es lo que los usuarios de uBO aplicaban a mano
+  en 2023 y hoy no lleva ninguna lista (comprobado en el Base vivo de AdGuard y en todo uAssets). No se oculta
+  por CSS: un `tp-yt-paper-dialog` escondido deja el scroll bloqueado. **Solo sale en cuentas marcadas: con
+  perfil nuevo no se reproduce** (seis vídeos seguidos, cargas completas y SPA, sin popup ni pantalla de
+  error), así que la evidencia es el registro: `src/youtube/record.js` guarda los últimos 20 `/player` y
+  `/next` tal como los manda el servidor (claves, `playabilityStatus`, `auxiliaryUi`, y cualquier subárbol
+  cuya clave parezca enforcement) y, cuando aparece el popup o la pantalla de error, escribe
+  **`Descargas\AdBlock\youtube-<fecha>-<motivo>.json`** por `bridge.js`. Flujo: Fran dice la hora; la
+  sesión lee el fichero. Aparte, el otro aviso de esta temporada, el **snackbar** "¿Tienes interrupciones?",
+  lo tapan dos reglas cosméticas de uBO (`quick-fixes.txt`, 2026-10-15) que el build cosmético toma del
+  snapshot de uAssets; el player no se bloquea porque la regla de AdGuard reescribe cada `/player`
+  (`params=eAFgAQ`; comprobado con un hook de `TextEncoder.encode`, que es por donde sale el cuerpo:
+  Playwright lo ve como `postData` nulo) y el servidor ya no devuelve `adPlacements`. Memoria
+  `youtube-popup-enforcement-y-listas-vivas`.
 - **Toolchain:** Node ≥ 22 (en la máquina hay 24) con esbuild. Fuente en `src/` en JavaScript
   plano; `build.mjs` genera `dist/` (ignorado en git). `npm run build` funciona desde un clon limpio
   con solo `npm install`: no descarga nada de la red.
@@ -114,9 +124,10 @@ alcance (carcasa que consume piezas mantenidas por otros), no con otro.
 build.mjs        lee build.config.mjs y escribe dist/:
   rulesets/      ruleset_<id>.json de AdGuard sin su regla de metadatos (el Base pesa 20 MB con ella)
   cosmetic/      runtime.js (selectores genéricos + runtime) y bucket-N.json (por dominio)
-  youtube.js     MAIN world: 31 reglas compiladas (27 del Base de AdGuard, 4 de uAssets)
+  youtube.js     MAIN world: 35 reglas compiladas (27 del Base de AdGuard, 4 de uAssets, 4 locales) y el registro
+                 (src/youtube/record.js: últimos /player y /next tal como llegan, popup y pantalla de error)
   twitch.js      MAIN world: hook de Worker/fetch/XHR de la página con src/twitch/worker.js inlined (el bloqueo)
-  twitch-bridge.js  ISOLATED: relé página -> service worker del registro (chrome.downloads -> Descargas\AdBlock\)
+  bridge.js      ISOLATED (twitch.tv y YouTube): relé página -> service worker de los registros (chrome.downloads -> Descargas\AdBlock\)
   background.js  service worker: registra los content scripts (con los sitios desactivados excluidos), aplica las reglas
                  allowAllRequests del interruptor, escribe los registros de Twitch y da diagnóstico a verify
   popup.html/js  el interruptor por sitio
@@ -170,7 +181,7 @@ build.mjs        lee build.config.mjs y escribe dist/:
 |---|---|
 | `npm run build` | regenera `dist/` (≈1 s) |
 | `npm run vendor` | refresca `vendor/uassets-quick-fixes.txt` (GitHub) y `vendor/adguard-base-youtube.txt` (las reglas de YouTube de la lista Base viva de AdGuard); commitéalos |
-| `npm run verify -- generic\|youtube\|twitch\|all` | carga `dist/` en un Chromium con Playwright y comprueba en páginas reales (`generic` incluye el interruptor por sitio sobre umami.getfran.dev) |
+| `npm run verify -- generic\|youtube\|twitch\|all` | carga `dist/` en un Chromium con Playwright y comprueba en páginas reales (`generic` incluye el interruptor por sitio sobre umami.getfran.dev; `youtube` comprueba las reglas anti-popup, los selectores del snackbar y que el registro llega a `Descargas\AdBlock\`) |
 | `npm run verify -- twitch --seconds=900 --twitch=<canal>[,<canal>...]` | vigila cada canal hasta 900 s y para 30 s después del primer corte cosido completo; imprime por corte backups usados, URIs de anuncio en la red, parón más largo, UI de anuncio y si el vídeo sigue tras el corte |
 | `node test/twitch-playlists.mjs` | comprobaciones sin navegador de las piezas puras del worker sobre playlists sintéticas |
 

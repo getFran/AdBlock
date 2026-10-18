@@ -8,13 +8,15 @@
 // uAssets quick-fixes; nothing is hand-written here.
 
 import rules from '../../.cache/gen/youtube-rules.js';
+import { installRecord } from './record.js';
 
 (function () {
   if (window.__adblockYoutube) return;
+  // the record first: its hooks on Response/XMLHttpRequest must sit under the rules' to see the server's bytes
+  const state = installRecord(__EXT_VERSION__);
   const host = location.hostname.toLowerCase();
   const matches = (domain) => host === domain || host.endsWith('.' + domain);
-  const applied = [];
-  const failed = [];
+  const { applied, failed } = state;
   for (const rule of rules) {
     if (!rule.d.some(matches) || rule.x.some(matches)) continue;
     try {
@@ -25,6 +27,5 @@ import rules from '../../.cache/gen/youtube-rules.js';
       console.debug('[AdBlock/youtube] rule failed:', rule.n, e);
     }
   }
-  window.__adblockYoutube = { applied, failed };
   console.debug('[AdBlock/youtube] applied', applied.length, 'rules on', host, failed.length ? '(failed: ' + failed.join(' | ') + ')' : '');
 })();

@@ -39,10 +39,13 @@ desactivado de fábrica porque una regla de AdGuard (`||umami.`) rompe el panel 
 
 ## Estado (2026-10-18)
 
-- Genérico y YouTube: funcionando y verificados. El aviso de YouTube "los bloqueadores de anuncios no
-  están permitidos / ¿tienes interrupciones?" (2026-10-18) es un snackbar que no bloquea el player: desde
-  ese día lo ocultan las dos reglas cosméticas de uBlock Origin que entran al build, y las reglas de
-  YouTube de AdGuard se refrescan con `npm run vendor` desde la lista viva.
+- Genérico y YouTube: funcionando y verificados. El popup "Ad blockers are not allowed on YouTube"
+  (2026-10-18) solo sale en cuentas marcadas y no se reproduce con perfil nuevo: desde ese día cuatro
+  reglas locales podan su carga (`auxiliaryUi.messageRenderers.enforcementMessageViewModel`) además de la
+  regla de AdGuard que anula la detección, y la extensión deja un `Descargas\AdBlock\youtube-<fecha>-
+  <motivo>.json` cuando aparece el popup o la pantalla de error, con los player responses tal como
+  llegaron. El snackbar "¿Tienes interrupciones?" lo tapan dos reglas de uBlock Origin que entran al
+  build, y las reglas de YouTube de AdGuard se refrescan con `npm run vendor` desde la lista viva.
 - Twitch: bloqueo por intercambio de stream (site → popout → frontpage → mobile_web → embed → autoplay
   360p), blank segment para lo que ningún backup cubra, y `edge.ads.twitch.tv` respondido vacío. Un
   corte cosido solo se verifica cuando Twitch lo mete: si la prueba no ve ninguno, lo dice. Primer

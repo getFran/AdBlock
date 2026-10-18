@@ -3,7 +3,7 @@
 //   - registers those content scripts (chrome.scripting, not the manifest) so that a site switched off in the popup
 //     gets none of them, and keeps a DNR allowAllRequests rule per switched-off site so nothing of it is blocked;
 //   - answers the popup (the list of switched-off sites, add, remove);
-//   - writes the Twitch records (src/twitch/page.js) to Downloads/AdBlock/;
+//   - writes the Twitch and YouTube records (src/twitch/page.js, src/youtube/record.js) to Downloads/AdBlock/;
 //   - offers diagnostics to test/verify.mjs. Nothing here is on the hot path.
 
 const CONTENT_SCRIPTS = __CONTENT_SCRIPTS__; // from build.mjs: { id, matches, js, runAt, world?, allFrames?, matchOriginAsFallback? }
@@ -124,7 +124,7 @@ chrome.runtime.onStartup.addListener(() => {
   ensureApplied().catch((e) => console.error('[AdBlock] per-site switch failed to apply', e));
 });
 
-// --- messages: the popup, and the Twitch records --------------------------------------------------------
+// --- messages: the popup, and the Twitch/YouTube records --------------------------------------------------------
 
 const saves = [];
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -141,7 +141,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         .catch((e) => sendResponse({ error: String(e) }));
       return true;
     case 'save': {
-      // a record from the Twitch page script (relayed by twitch-bridge.js): Downloads/AdBlock/<name>. A data URL keeps
+      // a record from the Twitch or YouTube page script (relayed by bridge.js): Downloads/AdBlock/<name>. A data URL keeps
       // this inside the service worker (no blob URLs here); the page caps the record well under Chrome's URL limit.
       const name = String(message.name || 'record.json').replace(/[^\w.-]/g, '_');
       const url = 'data:application/json;base64,' + btoa(unescape(encodeURIComponent(String(message.json || ''))));
@@ -150,11 +150,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         .then((id) => {
           saves.push({ name, id, at: Date.now(), bytes: String(message.json || '').length });
           if (saves.length > 100) saves.splice(0, saves.length - 100);
-          console.log('[AdBlock] Twitch record saved: Downloads/AdBlock/' + name);
+          console.log('[AdBlock] record saved: Downloads/AdBlock/' + name);
           sendResponse({ ok: true, id });
         })
         .catch((e) => {
-          console.error('[AdBlock] Twitch record NOT saved:', name, e);
+          console.error('[AdBlock] record NOT saved:', name, e);
           sendResponse({ ok: false, error: String(e) });
         });
       return true;

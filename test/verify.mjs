@@ -198,8 +198,16 @@ async function testYoutube({ context, sw }) {
     return { present: !!window.ytInitialPlayerResponse, adPlacements: r.adPlacements, adSlots: r.adSlots, playerAds: r.playerAds, streaming: !!r.streamingData, status: r.playabilityStatus && r.playabilityStatus.status };
   });
   say(`ytInitialPlayerResponse: present=${inline.present} status=${inline.status} streamingData=${inline.streaming} adPlacements=${JSON.stringify(inline.adPlacements)} adSlots=${JSON.stringify(inline.adSlots)} playerAds=${JSON.stringify(inline.playerAds)}`);
-  const applied = await page.evaluate(() => window.__adblockYoutube);
+  const applied = await page.evaluate(() => window.__adblockYoutube && { applied: window.__adblockYoutube.applied, failed: window.__adblockYoutube.failed });
   say(`rules applied in MAIN world: ${applied ? applied.applied.length : 'NONE (script did not run)'}${applied && applied.failed.length ? ' | failed: ' + applied.failed.join(' | ') : ''}`);
+  // the two halves of the defence against the "Ad blockers are not allowed on YouTube" popup: AdGuard's neutering of
+  // the onAbnormalityDetected handler (the first raw JS rule of the Base, a Promise.then proxy) and our pruning of the
+  // popup's payload (build.config.mjs youtube.local)
+  const names = (applied && applied.applied) || [];
+  const abnormality = names.some((n) => /^js:\(\(\)=>\{const t=\{apply:\(t,o,n\)=>\{const e=n/.test(n));
+  // the labels truncate each argument to 30 characters (build.mjs)
+  const payload = ['json-prune(auxiliaryUi', 'json-prune-fetch-response(auxiliaryUi', 'json-prune-xhr-response(auxiliaryUi', 'set-constant(ytInitialPlayerResponse.auxili'].filter((p) => names.some((n) => n.startsWith(p)));
+  say(`anti-popup rules: onAbnormalityDetected neutered=${abnormality}${abnormality ? '' : ' !!'} | enforcement payload pruned by ${payload.length}/4 rules${payload.length === 4 ? '' : ' !!'}`);
   const playerAdsDisplay = await page.evaluate(() => {
     const e = document.getElementById('player-ads');
     return e ? getComputedStyle(e).display : 'absent';
@@ -259,6 +267,23 @@ async function testYoutube({ context, sw }) {
   const matched = await matchedSince(sw, since);
   const ads = matched.filter((m) => /doubleclick|googlesyndication|googleads|pagead|youtube\.com\/(api\/stats\/ads|pagead|ptracking)/.test(m.url));
   say(`network: ${blocked.length} requests blocked by the client, ${matched.length} DNR matches (${ads.length} ad/tracking-looking)`);
+
+  // the record the extension writes to Downloads/AdBlock/ when the popup or the error screen shows up (src/youtube/record.js):
+  // asked by hand here, its download checked, and its content read back (the player responses as the server sent them)
+  const savedName = await page.evaluate(() => (window.__adblockYoutube && window.__adblockYoutube.save ? window.__adblockYoutube.save('verify') : null)).catch(() => null);
+  await sleep(3000);
+  const download = savedName ? await sw.evaluate((name) => globalThis.__adblock.downloadState(name), savedName).catch((e) => ({ error: e.message })) : null;
+  say(`record: ${savedName ? savedName + ' -> ' + JSON.stringify(download) : 'save() not available on the page !!'}`);
+  if (download && download.state === 'complete' && download.filename && fs.existsSync(download.filename)) {
+    try {
+      const r = JSON.parse(fs.readFileSync(download.filename, 'utf8'));
+      const players = r.responses.filter((x) => /\/player/.test(x.url));
+      const findings = r.responses.flatMap((x) => x.findings.map((f) => f.path));
+      say(`record content: version ${r.version}, loggedIn=${r.loggedIn}, ${r.responses.length} responses (${players.length} /player: status ${[...new Set(players.map((p) => p.status))].join(',') || '-'}, auxiliaryUi ${players.some((p) => p.auxiliaryUi) ? 'PRESENT' : 'absent'}), anti-adblock findings: ${findings.length ? findings.join(' | ') : 'none'}, ${r.events.length} events, ${r.log.length} log lines`);
+    } catch (e) {
+      say(`record content: could not read ${download.filename}: ${e.message} !!`);
+    }
+  } else if (savedName) say('record: download not complete !!');
   if (logs.length) say('console: ' + logs.slice(0, 5).join(' || '));
   await page.close();
   return { adSeen, pruned: last.adPlacements === null && last.adSlots === null };
