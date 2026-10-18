@@ -20,9 +20,18 @@ export default {
     hosts: ['youtube.com', 'youtube-nocookie.com', 'youtubekids.com'],
     // Scriptlet and JS rules for the hosts above are taken from this AdGuard ruleset's filter text...
     adguardRuleset: 2,
+    // ...with its YouTube lines (cosmetic and JS) swapped for a snapshot of the live filter, because the npm
+    // package lags the filter by weeks (36 days between the September and October 2026 releases) and AdGuard
+    // touches its YouTube rules every few days. `npm run vendor` refreshes the snapshot.
+    adguardLive: {
+      url: 'https://filters.adtidy.org/extension/chromium-mv3/filters/2.txt',
+      snapshot: 'vendor/adguard-base-youtube.txt',
+    },
     // ...plus uBlock Origin's quick fixes, converted to AdGuard syntax. Only these uBO scriptlets are kept:
     // the rest of the YouTube block in quick-fixes.txt uses uBO-only scriptlets that @adguard/scriptlets
     // does not implement (rpnt, trusted-edit-inbound-object, trusted-rpfr, trusted-prevent-dom-bypass...).
+    // Its plain cosmetic rules for the YouTube hosts go to the cosmetic build too: they hide the "ad blockers
+    // violate YouTube's Terms of Service" snackbar and toast, which no AdGuard list covers (2026-10-18).
     uassets: {
       url: 'https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/quick-fixes.txt',
       snapshot: 'vendor/uassets-quick-fixes.txt',

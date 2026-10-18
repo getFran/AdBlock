@@ -18,7 +18,9 @@ npm run build        # -> dist/
 
 En `chrome://extensions`: modo desarrollador → "Load unpacked" → la carpeta `dist/`. Actualizar
 listas = `npm install @adguard/dnr-rulesets@latest @adguard/scriptlets@latest && npm run vendor &&
-npm run build` y recargar la extensión.
+npm run build` y recargar la extensión. Si lo que falla es YouTube, `npm run vendor && npm run build`
+basta: las reglas de YouTube de AdGuard se toman de su lista viva (`vendor/adguard-base-youtube.txt`),
+no del paquete npm, que va semanas por detrás.
 
 Verificación en páginas reales (Chromium de Playwright, perfil nuevo cada vez):
 
@@ -35,9 +37,12 @@ Icono del perro en la barra → "Desactivar en <host>". Quita en ese host y sus 
 de red, el CSS cosmético y los scripts de YouTube y Twitch, y recarga la pestaña. `getfran.dev` viene
 desactivado de fábrica porque una regla de AdGuard (`||umami.`) rompe el panel de Umami autoalojado.
 
-## Estado (2026-10-15)
+## Estado (2026-10-18)
 
-- Genérico y YouTube: funcionando y verificados.
+- Genérico y YouTube: funcionando y verificados. El aviso de YouTube "los bloqueadores de anuncios no
+  están permitidos / ¿tienes interrupciones?" (2026-10-18) es un snackbar que no bloquea el player: desde
+  ese día lo ocultan las dos reglas cosméticas de uBlock Origin que entran al build, y las reglas de
+  YouTube de AdGuard se refrescan con `npm run vendor` desde la lista viva.
 - Twitch: bloqueo por intercambio de stream (site → popout → frontpage → mobile_web → embed → autoplay
   360p), blank segment para lo que ningún backup cubra, y `edge.ads.twitch.tv` respondido vacío. Un
   corte cosido solo se verifica cuando Twitch lo mete: si la prueba no ve ninguno, lo dice. Primer

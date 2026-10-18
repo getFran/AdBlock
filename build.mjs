@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 // Build of the extension: node build.mjs            -> dist/ (load it unpacked in chrome://extensions)
-//                         node build.mjs --vendor   -> refresh vendor/uassets-quick-fixes.txt from GitHub
+//                         node build.mjs --vendor   -> refresh vendor/ (uAssets quick-fixes, AdGuard Base's YouTube rules)
 //
 // The extension is a shell: nothing here decides what is an ad. The build takes
-//   - DNR rulesets and filter texts from @adguard/dnr-rulesets (the package version is the filter snapshot),
+//   - DNR rulesets and filter texts from @adguard/dnr-rulesets (the package version is the filter snapshot,
+//     except for the YouTube rules, which come from a vendored snapshot of the live AdGuard Base filter),
 //   - scriptlet implementations from @adguard/scriptlets,
 //   - YouTube arguments from AdGuard Base and from uBlock Origin's quick-fixes.txt (vendored snapshot),
 // and compiles them into static assets plus four small runtimes under src/.
@@ -50,8 +51,41 @@ function readRuleset(id) {
     filterText: isMeta ? String(first.metadata.filterContent || '').replace(/\r/g, '') : '',
     regexCount: isMeta ? first.metadata.metadata.regexpRulesCount : 0,
   };
+  if (id === config.youtube.adguardRuleset) out.filterText = overlayYoutube(out.filterText);
   rulesetCache.set(id, out);
   return out;
+}
+
+// A cosmetic or JS rule (##, #@#, #$#, #?#, #%#, #@%#...) whose domain list names one of the hosts, with or without
+// a [$modifier] prefix. Network rules never match: those come precompiled as DNR rules and are left alone.
+function isRuleFor(line, hosts) {
+  if (!line || line[0] === '!') return false; // a commented-out rule is a comment
+  const m = /^(?:\[\$[^\]]*\])?([^#\s]*)#[@%$?]*#/.exec(line);
+  if (!m) return false;
+  const { include, exclude } = splitDomains(m[1]);
+  return onHosts([...include, ...exclude], hosts);
+}
+
+// The npm package lags AdGuard's filter by weeks and the YouTube rules move every few days, so the YouTube lines of
+// AdGuard Base come from vendor/adguard-base-youtube.txt (a snapshot of the live filter, `npm run vendor`) instead of
+// the package's text: every cosmetic and JS rule naming a YouTube host is swapped, exceptions included.
+function overlayYoutube(filterText) {
+  const { snapshot } = config.youtube.adguardLive;
+  const file = path.join(ROOT, snapshot);
+  if (!fs.existsSync(file)) throw new Error(`${snapshot} is missing: run "npm run vendor"`);
+  const hosts = config.youtube.hosts;
+  const text = fs.readFileSync(file, 'utf8');
+  const updated = (/^! .*updated ([^,)]+)/m.exec(text) || [])[1] || '?';
+  const live = text.split('\n').map((l) => l.trim()).filter((l) => l && l[0] !== '!');
+  const kept = [];
+  const removed = new Set();
+  for (const raw of filterText.split('\n')) {
+    if (isRuleFor(raw.trim(), hosts)) removed.add(raw.trim());
+    else kept.push(raw);
+  }
+  const changed = live.filter((l) => !removed.has(l)).length + [...removed].filter((l) => !live.includes(l)).length;
+  log(`adguard: ${removed.size} YouTube rules of the npm package swapped for ${live.length} of the live filter (${updated}, ${snapshot}): ${changed} lines differ`);
+  return kept.join('\n') + '\n' + live.join('\n') + '\n';
 }
 
 function filterNames() {
@@ -172,9 +206,27 @@ function dedupeEntry(entry) {
   return entry;
 }
 
+// uBlock Origin's quick fixes carry plain cosmetic rules for YouTube that no AdGuard list has: the "ad blockers violate
+// YouTube's Terms of Service" snackbar (bottom left, since 2026-10-15) and the older toast. Only the YouTube hosts' lines
+// come in; parseCosmetic drops what is uBO-only (##^script…:has-text()).
+function uassetsYoutubeCosmetic() {
+  const file = path.join(ROOT, config.youtube.uassets.snapshot);
+  if (!fs.existsSync(file)) throw new Error(`${config.youtube.uassets.snapshot} is missing: run "npm run vendor"`);
+  return fs
+    .readFileSync(file, 'utf8')
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l && l[0] !== '!' && !l.includes('##+js(') && isRuleFor(l, config.youtube.hosts))
+    .join('\n');
+}
+
 function buildCosmetic() {
   const acc = cosmeticAccumulator();
   for (const id of config.cosmetic.from) parseCosmetic(readRuleset(id).filterText, acc);
+  const before = { ...acc.stats };
+  parseCosmetic(uassetsYoutubeCosmetic(), acc);
+  const s0 = acc.stats;
+  log(`cosmetic: uassets YouTube rules: ${s0.hide - before.hide} hide, ${s0.css - before.css} css, ${s0.except - before.except} exceptions, ${s0.skippedExt - before.skippedExt} skipped (uBO-only)`);
   for (const sel of acc.genericExceptAll) acc.generic.delete(sel);
 
   // Domain-specific rules go to cosmetic/bucket-N.json, N = hash of the domain's last two labels, so the
@@ -432,16 +484,35 @@ function writeManifest({ resources }) {
   fs.writeFileSync(path.join(DIST, 'manifest.json'), JSON.stringify(manifest, null, 2));
 }
 
-async function vendor() {
-  const { url, snapshot } = config.youtube.uassets;
+async function download(url) {
   log(`downloading ${url}`);
-  const res = await fetch(url, { signal: AbortSignal.timeout(20000) });
+  const res = await fetch(url, { signal: AbortSignal.timeout(30000) });
   if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);
-  const text = await res.text();
-  const header = `! Snapshot of uAssets quick-fixes.txt vendored on ${new Date().toISOString()} from ${url}\n! Refresh with: npm run vendor\n`;
-  fs.mkdirSync(path.dirname(path.join(ROOT, snapshot)), { recursive: true });
-  fs.writeFileSync(path.join(ROOT, snapshot), header + text);
-  log(`wrote ${snapshot} (${text.split('\n').length} lines)`);
+  return (await res.text()).replace(/\r/g, '');
+}
+
+// Both snapshots are downloaded before either is written: a failed download leaves vendor/ as it was.
+async function vendor() {
+  const ua = config.youtube.uassets;
+  const adg = config.youtube.adguardLive;
+  const [uaText, adgText] = await Promise.all([download(ua.url), download(adg.url)]);
+  const stamp = new Date().toISOString();
+  fs.mkdirSync(path.join(ROOT, 'vendor'), { recursive: true });
+
+  fs.writeFileSync(path.join(ROOT, ua.snapshot), `! Snapshot of uAssets quick-fixes.txt vendored on ${stamp} from ${ua.url}\n! Refresh with: npm run vendor\n` + uaText);
+  log(`wrote ${ua.snapshot} (${uaText.split('\n').length} lines)`);
+
+  const meta = (key) => ((new RegExp(`^! ${key}: (.+)$`, 'm').exec(adgText) || [])[1] || '?').trim();
+  const lines = adgText
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l && l[0] !== '!' && isRuleFor(l, config.youtube.hosts));
+  const header =
+    `! YouTube rules of the live AdGuard Base filter (version ${meta('Version')}, updated ${meta('TimeUpdated')}), vendored on ${stamp} from ${adg.url}\n` +
+    `! Only the cosmetic and JS rules whose domains name a YouTube host; the build swaps them in for the npm package's (build.mjs overlayYoutube).\n` +
+    `! Refresh with: npm run vendor\n`;
+  fs.writeFileSync(path.join(ROOT, adg.snapshot), header + lines.join('\n') + '\n');
+  log(`wrote ${adg.snapshot} (${lines.length} rules; filter ${meta('Version')} of ${meta('TimeUpdated')})`);
 }
 
 async function main() {

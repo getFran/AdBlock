@@ -24,9 +24,12 @@ alcance (carcasa que consume piezas mantenidas por otros), no con otro.
 
 - **Arquitectura de carcasa.** La extensión no reimplementa lógica de bloqueo. El build toma:
   rulesets DNR precompilados y el texto de filtro embebido de `@adguard/dnr-rulesets` (la versión
-  del paquete **es** la foto de las listas: va fijada en `package.json`), los scriptlets de
+  del paquete **es** la foto de las listas: va fijada en `package.json`; la excepción son las reglas
+  de YouTube del Base, que desde el 2026-10-18 salen de `vendor/adguard-base-youtube.txt`, foto de la
+  lista viva que refresca `npm run vendor`, porque el paquete npm va semanas por detrás: 36 días entre
+  la release de septiembre y la de octubre y AdGuard toca YouTube cada pocos días), los scriptlets de
   `@adguard/scriptlets`, las reglas de YouTube del filtro Base de AdGuard más la familia
-  `json-prune` de `uAssets/filters/quick-fixes.txt` (snapshot en `vendor/`), y para Twitch el hook
+  `json-prune` y las dos reglas cosméticas de `uAssets/filters/quick-fixes.txt` (snapshot en `vendor/`), y para Twitch el hook
   del Worker portado de Purple Ads Blocker (`github.com/arthurbolsoni/Purple-adblock`, **Apache-2.0**,
   no GPL-3: la procedencia está citada en cada fichero de `src/twitch/`).
 - **El bloqueo de Twitch es intercambio de stream, portado de Purple** (decidido el 2026-10-15 con el
@@ -79,6 +82,18 @@ alcance (carcasa que consume piezas mantenidas por otros), no con otro.
   se usa el interruptor. `npm run verify -- generic` lo comprueba sobre `umami.getfran.dev` (19 peticiones
   bloqueadas con todo activo, 0 y sin hoja cosmética con el sitio desactivado). Permisos nuevos:
   `scripting`, `storage`.
+- **El aviso "los bloqueadores de anuncios no están permitidos / ¿tienes interrupciones?" de YouTube**
+  (Fran lo vio el 2026-10-18) **es un snackbar abajo a la izquierda, no un bloqueo**: el player sigue
+  porque la regla de AdGuard reescribe cada `/youtubei/v1/player` (`params=eAFgAQ`, `lactMilliseconds`,
+  sin `appInstallData`; comprobado desde dentro de la página con un hook de `TextEncoder.encode`, que es
+  por donde sale el cuerpo: Playwright lo ve como `postData` nulo) y el servidor ya no devuelve
+  `adPlacements`; si eso falla, la misma regla rota `8AUB` → `pyv` → `CHANNEL` → `AD_TYPE_INSTREAM` al
+  ver la pantalla de error. Ninguna lista de AdGuard oculta el snackbar; uBO sí, con dos reglas
+  cosméticas de `quick-fixes.txt` (`#toast:has(…yt-notification-action-renderer)` y
+  `.ytSnackbarContainerOpened:has(…)`, esta del 2026-10-15), y por eso el build cosmético toma también las
+  reglas `##` de los hosts de YouTube del snapshot de uAssets. Solo sale en cuentas marcadas: con un perfil
+  nuevo no se reproduce (seis vídeos seguidos sin aviso), así que `verify youtube` comprueba que los dos
+  selectores llegan al CSS de la página. Memoria `youtube-aviso-bloqueadores-snackbar-y-listas-vivas`.
 - **Toolchain:** Node ≥ 22 (en la máquina hay 24) con esbuild. Fuente en `src/` en JavaScript
   plano; `build.mjs` genera `dist/` (ignorado en git). `npm run build` funciona desde un clon limpio
   con solo `npm install`: no descarga nada de la red.
@@ -117,6 +132,8 @@ build.mjs        lee build.config.mjs y escribe dist/:
 - **Cosmético:** 16.006 selectores genéricos inyectados en el acto a `document_start`; después
   el cubo del dominio (hash de las dos últimas etiquetas del host, `src/lib/hash.js`) con sus
   selectores, sus reglas `#$#` y sus excepciones `#@#`, que también se restan de la hoja genérica.
+  Al cubo de `youtube.com` entran además las reglas `##` de los hosts de YouTube de
+  `vendor/uassets-quick-fixes.txt` (las del snackbar del aviso); el build dice cuántas.
 - **YouTube:** `json-prune` sobre `JSON.parse`/`Response.json`, `json-prune-fetch-response`,
   `json-prune-xhr-response`, `set-constant` para el `ytInitialPlayerResponse` inline, las
   contramedidas (`onAbnormalityDetected`, iframe `about:blank`, temporizador de 17 s)… todo
@@ -152,14 +169,16 @@ build.mjs        lee build.config.mjs y escribe dist/:
 | | |
 |---|---|
 | `npm run build` | regenera `dist/` (≈1 s) |
-| `npm run vendor` | refresca `vendor/uassets-quick-fixes.txt` desde GitHub (commitéalo) |
+| `npm run vendor` | refresca `vendor/uassets-quick-fixes.txt` (GitHub) y `vendor/adguard-base-youtube.txt` (las reglas de YouTube de la lista Base viva de AdGuard); commitéalos |
 | `npm run verify -- generic\|youtube\|twitch\|all` | carga `dist/` en un Chromium con Playwright y comprueba en páginas reales (`generic` incluye el interruptor por sitio sobre umami.getfran.dev) |
 | `npm run verify -- twitch --seconds=900 --twitch=<canal>[,<canal>...]` | vigila cada canal hasta 900 s y para 30 s después del primer corte cosido completo; imprime por corte backups usados, URIs de anuncio en la red, parón más largo, UI de anuncio y si el vídeo sigue tras el corte |
 | `node test/twitch-playlists.mjs` | comprobaciones sin navegador de las piezas puras del worker sobre playlists sintéticas |
 
 **Actualizar las listas** = `npm install @adguard/dnr-rulesets@latest @adguard/scriptlets@latest`,
 `npm run vendor`, `npm run build`, recargar en `chrome://extensions`. Si YouTube o Twitch se
-rompen, eso es lo primero: la carcasa se arregla con un build, no investigando.
+rompen, eso es lo primero: la carcasa se arregla con un build, no investigando. **Para YouTube basta
+`npm run vendor && npm run build`**: trae las reglas de hoy de AdGuard (lista viva) y de uBO sin
+esperar a que AdGuard publique el paquete npm, que tarda semanas.
 
 **Verificación:** `test/verify.mjs` usa el Chromium de Playwright (`--channel=chromium`, que sí
 trae H.264/AAC, comprobado) porque el Chrome de marca ≥ 137 ignora `--load-extension` y Edge no

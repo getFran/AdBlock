@@ -206,6 +206,21 @@ async function testYoutube({ context, sw }) {
   });
   say(`#player-ads (generic rule with a youtube.com exception, must NOT be hidden): display=${playerAdsDisplay}`);
 
+  // The "ad blockers violate YouTube's Terms of Service" snackbar/toast (what Fran saw on 2026-10-18) is hidden by
+  // uBO's quick-fixes rules, which the cosmetic build takes for the YouTube hosts; no AdGuard list has them. It only
+  // shows up on flagged accounts, so from a fresh profile the check is that the selectors reached the page's CSS.
+  const warningSelectors = await page.evaluate(() => {
+    const wanted = ['ytSnackbarContainerOpened', 'yt-notification-action-renderer'];
+    const found = new Set();
+    for (const sheet of document.adoptedStyleSheets) {
+      try {
+        for (const rule of sheet.cssRules) for (const w of wanted) if (rule.cssText.includes(w)) found.add(w);
+      } catch {}
+    }
+    return wanted.map((w) => `${w}=${found.has(w)}`);
+  });
+  say(`"ad blockers violate the Terms" snackbar/toast selectors in the injected CSS: ${warningSelectors.join(', ')}${warningSelectors.some((w) => w.endsWith('false')) ? ' !!' : ''}`);
+
   const samples = [];
   for (let i = 0; i < 25; i++) {
     samples.push(await playerState(page));
