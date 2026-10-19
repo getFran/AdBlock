@@ -42,7 +42,14 @@ Nada de depuración fuera de `!__RELEASE__` (en el worker, `RELEASE` vía `typeo
 de release lo comprueba. Para una versión a mano: `version` en `package.json`, commit, y `node scripts/publish.mjs
 <PAT>` (idempotente: abre el repo si sigue privado, crea y empuja el tag, espera la Action y enseña la release; el
 token va por argumento, nunca en el repo). Ese script lo lanza Fran desde la sesión con `!`, como los del router.
-El 2026-10-18 quedó todo commiteado y la apertura del repo y la `v1.0.0` pendientes de que él lo lance.
+El 2026-10-18 quedó todo commiteado; el 2026-10-19 Fran puso `defaultMode: bypassPermissions` en su `settings.json`
+(sin él, el clasificador de auto mode denegaba el script y hasta añadir la regla de permiso) y la `v1.0.0` salió ese
+día a las 15:44 UTC: repo público, zip de 5,9 MB con la carpeta `getfran-adblock/`, manifest con los cuatro permisos y
+sin código de depuración (comprobado descargando el zip), `releases/latest` resolviendo al tag, y un build de
+desarrollo 0.9.0 viendo `latest=1.0.0 available=true`. Dos rarezas de GitHub, ninguna grave: justo después de hacer
+público el repo, el push del tag dio `403 "Your repository is disabled"` durante un minuto (reintentar basta), y el
+listado de runs de la API dejó la ejecución del tag como `queued` con fecha posterior a la release que ella misma
+creó (no se puede cancelar: "not in progress"); el estado real es la release.
 Antes de tocar `package.json` o `vendor/`, `git pull`: los lunes puede haber un commit del bot. La primera
 ejecución programada (2026-10-19) falló con `npm error 429 Too Many Requests` del registro de npm hacia el runner:
 las IPs compartidas de GitHub Actions tienen cuota en npmjs.org; desde entonces el paso de listas reintenta con
