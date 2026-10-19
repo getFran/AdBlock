@@ -43,7 +43,11 @@ de release lo comprueba. Para una versión a mano: `version` en `package.json`, 
 <PAT>` (idempotente: abre el repo si sigue privado, crea y empuja el tag, espera la Action y enseña la release; el
 token va por argumento, nunca en el repo). Ese script lo lanza Fran desde la sesión con `!`, como los del router.
 El 2026-10-18 quedó todo commiteado y la apertura del repo y la `v1.0.0` pendientes de que él lo lance.
-Antes de tocar `package.json` o `vendor/`, `git pull`: los lunes puede haber un commit del bot. **Pendiente que
+Antes de tocar `package.json` o `vendor/`, `git pull`: los lunes puede haber un commit del bot. La primera
+ejecución programada (2026-10-19) falló con `npm error 429 Too Many Requests` del registro de npm hacia el runner:
+las IPs compartidas de GitHub Actions tienen cuota en npmjs.org; desde entonces el paso de listas reintenta con
+espera creciente y npm lleva `fetch-retries` subidos. Si llega un correo de "Release failed" un lunes, mirar primero
+si es eso (el log acaba en `E429`) antes de buscar un fallo del build. **Pendiente que
 decida Fran:** el icono es el meme dogwifhat, sin derechos claros, no apto para un repo público a largo plazo.
 Relacionado: [[twitch-intercambio-verificado-primer-midroll-real]] (la evidencia que el build de release ya no
 genera: para investigar un corte hay que cargar el build de desarrollo),

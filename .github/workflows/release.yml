@@ -27,6 +27,12 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-latest
+    env:
+      # the npm registry rate-limits the runners' shared addresses (HTTP 429, seen 2026-10-19): npm retries those itself
+      # when told to wait long enough, and the list step retries on top
+      NPM_CONFIG_FETCH_RETRIES: 5
+      NPM_CONFIG_FETCH_RETRY_MINTIMEOUT: 20000
+      NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT: 120000
     steps:
       - uses: actions/checkout@v4
         with:
@@ -49,8 +55,17 @@ jobs:
         env:
           FORCE: ${{ inputs.force }}
         run: |
-          npm install --no-audit --no-fund @adguard/dnr-rulesets@latest @adguard/scriptlets@latest
-          npm run vendor
+          # a transient refusal (npm 429, a hiccup at GitHub raw or filters.adtidy.org) must not cost the week's release
+          retry() {
+            for attempt in 1 2 3 4 5; do
+              "$@" && return 0
+              [ "$attempt" = 5 ] && return 1
+              echo "attempt $attempt failed: waiting $((attempt * 60)) s before trying again"
+              sleep $((attempt * 60))
+            done
+          }
+          retry npm install --no-audit --no-fund @adguard/dnr-rulesets@latest @adguard/scriptlets@latest
+          retry npm run vendor
           # the snapshot headers carry the download time: ignored, only rules and package versions count
           if [ -z "$(git diff -I 'vendored on' -- package.json package-lock.json vendor/)" ] && [ "$FORCE" != "true" ]; then
             echo "lists unchanged since the last release: nothing to do"
