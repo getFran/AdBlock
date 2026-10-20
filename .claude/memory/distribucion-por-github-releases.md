@@ -43,7 +43,14 @@ solo entran a `document_start`). Desde ese día el service worker recarga una ve
 al instalar (`reason === 'install'`, nunca en updates) y `readScript` reintenta tres veces la lectura síncrona del
 script del worker. La release no graba nada: para saber qué vio hay que preguntarle (vídeo de anuncio con cuenta
 atrás, banner morado con el directo detrás, pantalla negra, al cargar el canal o a mitad) o cargar el build de
-desarrollo en ese PC.
+desarrollo en ese PC. Sus respuestas: vio **el vídeo del anuncio con su cuenta atrás, a mitad de un directo, en una
+pestaña abierta después de instalar**; no sabe si hay otra extensión en ese Chrome. O sea, el hook estaba (o el
+content script no entró) y el intercambio no actuó: hace falta el registro de allí. Para eso existe la
+**pre-release `debug-1.0.0`** (`getfran-adblock-debug-1.0.0.zip`, carpeta `getfran-adblock-debug/`, el build de
+desarrollo tal cual, publicada por la API con `prerelease: true`; las pre-releases no cuentan para
+`releases/latest`, comprobado). Se regenera con `npm run build`, zip con `/c/Windows/System32/tar.exe -a -c -f` y
+subida a `uploads.github.com/.../releases/<id>/assets`. En ese PC se desactiva la normal y se carga la debug;
+el `twitch-*.json` cae en su `Descargas\AdBlock\` y Fran lo trae.
 
 **Why:** son decisiones de producto y de alcance que no se deducen del código: por qué no Web Store, por qué repo
 público y no uno de releases, por qué el zip lleva carpeta fija, por qué la comprobación de versión no usa la API,
