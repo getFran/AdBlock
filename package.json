@@ -13,6 +13,7 @@
     "vendor": "node build.mjs --vendor",
     "test": "node test/twitch-playlists.mjs",
     "smoke": "node test/smoke.mjs",
+    "probe": "node test/twitch-probe.mjs",
     "verify": "node test/verify.mjs",
     "verify:generic": "node test/verify.mjs generic",
     "verify:youtube": "node test/verify.mjs youtube",

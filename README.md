@@ -19,6 +19,9 @@ unpacked; the extension tells you when a newer release exists.
 2. Open `chrome://extensions`, turn on **Developer mode** (top right).
 3. Click **Load unpacked** and pick the `getfran-adblock` folder.
 
+Twitch and YouTube tabs that were already open are reloaded once at that moment: the blocking only runs in
+pages loaded after the install. If a tab still shows ads, reload it.
+
 Chrome may warn at startup that an extension is running in developer mode. That is how every unpacked
 extension works; there is no way around it outside the Web Store.
 

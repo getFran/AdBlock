@@ -33,6 +33,18 @@ extensión detectase que hay una versión nueva y avise», «lo que tú veas mej
 - **GPL-3.0** porque las listas y scriptlets de AdGuard y uAssets lo son; Purple (Apache-2.0) y vaft (MIT) se
   atribuyen en `THIRD_PARTY_NOTICES.md`, que entra en el zip.
 
+**Primer aviso de un usuario (2026-10-20):** Fran instaló la release en otro PC y vio anuncios en Twitch (usaba
+también el picture-in-picture). Comprobado desde aquí con `npm run probe` sobre el zip exacto de Releases (idéntico
+byte a byte a `dist/`): el hook está activo (pide los seis tokens de respaldo al cargar), el vídeo sigue, y ni el
+PiP del navegador ni el mini-player al navegar lo rompen; en una de seis cargas el hook no apareció (sin
+reproducirlo después, con o sin esperar al registro de los content scripts, que tarda 150 ms). Lo que sí es seguro:
+una pestaña de Twitch abierta **antes** de instalar no lleva el hook hasta recargarla (los scripts de MAIN world
+solo entran a `document_start`). Desde ese día el service worker recarga una vez las pestañas de Twitch y YouTube
+al instalar (`reason === 'install'`, nunca en updates) y `readScript` reintenta tres veces la lectura síncrona del
+script del worker. La release no graba nada: para saber qué vio hay que preguntarle (vídeo de anuncio con cuenta
+atrás, banner morado con el directo detrás, pantalla negra, al cargar el canal o a mitad) o cargar el build de
+desarrollo en ese PC.
+
 **Why:** son decisiones de producto y de alcance que no se deducen del código: por qué no Web Store, por qué repo
 público y no uno de releases, por qué el zip lleva carpeta fija, por qué la comprobación de versión no usa la API,
 y que la auditoría de `.claude/` ya se hizo (no hay que repetirla ni preocuparse por abrir el repo).

@@ -182,16 +182,20 @@ const AD_UI_SELECTORS = ['[data-a-target="video-ad-label"]', '[data-a-target="vi
     };
   })();
 
-  // the worker's script, read synchronously so the hook is in place before the worker starts
+  // the worker's script, read synchronously so the hook is in place before the worker starts; a read that fails leaves
+  // the whole tab unhooked until a reload, so it is tried three times
   function readScript(url) {
-    try {
-      const xhr = new XMLHttpRequest();
-      xhr.open('GET', url, false);
-      xhr.send();
-      return xhr.status >= 200 && xhr.status < 300 && typeof xhr.responseText === 'string' ? xhr.responseText : null;
-    } catch {
-      return null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const xhr = new XMLHttpRequest();
+        xhr.open('GET', url, false);
+        xhr.send();
+        if (xhr.status >= 200 && xhr.status < 300 && typeof xhr.responseText === 'string') return xhr.responseText;
+      } catch {
+        // once more
+      }
     }
+    return null;
   }
 
   async function runGql({ id, body, headers }) {

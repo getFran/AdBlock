@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const DIST = path.join(ROOT, 'dist');
+const DIST = process.env.ADBLOCK_DIST ? path.resolve(process.env.ADBLOCK_DIST) : path.join(ROOT, 'dist'); // e.g. an extracted release zip
 const manifest = JSON.parse(fs.readFileSync(path.join(DIST, 'manifest.json'), 'utf8'));
 const release = !manifest.permissions.includes('downloads');
 const headed = process.argv.includes('--headed');

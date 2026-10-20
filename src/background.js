@@ -233,8 +233,20 @@ const dev = __RELEASE__
 
 // --- lifecycle and messages --------------------------------------------------------------------------------
 
-chrome.runtime.onInstalled.addListener(() => {
-  ensureApplied().catch((e) => console.error('[AdBlock] per-site switch failed to apply', e));
+// A tab opened before the install never gets the MAIN-world scripts (they only run at document_start), so a Twitch or
+// YouTube tab that was already open would keep showing ads until someone reloads it. Reloaded once, right after the
+// first registration; never on updates, which must not restart what people are watching.
+async function reloadSiteTabs() {
+  const patterns = CONTENT_SCRIPTS.filter((s) => s.id === 'twitch' || s.id === 'youtube').flatMap((s) => s.matches);
+  const tabs = await chrome.tabs.query({ url: patterns });
+  await Promise.all(tabs.filter((tab) => tab.id != null).map((tab) => chrome.tabs.reload(tab.id).catch(() => {})));
+  return tabs.length;
+}
+
+chrome.runtime.onInstalled.addListener((details) => {
+  ensureApplied()
+    .then(() => (details && details.reason === 'install' ? reloadSiteTabs() : 0))
+    .catch((e) => console.error('[AdBlock] per-site switch failed to apply', e));
   scheduleUpdateCheck();
   checkForUpdate(false).catch(() => {});
   if (dev) dev.report().catch((e) => console.error('[AdBlock] report failed', e));
