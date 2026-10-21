@@ -50,7 +50,11 @@ content script no entró) y el intercambio no actuó: hace falta el registro de 
 desarrollo tal cual, publicada por la API con `prerelease: true`; las pre-releases no cuentan para
 `releases/latest`, comprobado). Se regenera con `npm run build`, zip con `/c/Windows/System32/tar.exe -a -c -f` y
 subida a `uploads.github.com/.../releases/<id>/assets`. En ese PC se desactiva la normal y se carga la debug;
-el `twitch-*.json` cae en su `Descargas\AdBlock\` y Fran lo trae.
+el `twitch-*.json` cae en su `Descargas\AdBlock\` y Fran lo trae. **2026-10-21:** Fran miró ese PC: las otras
+extensiones de bloqueo estaban desactivadas (conflicto descartado), y ese día, con la **release oficial** (no llegó a
+instalar la debug), ningún anuncio, sin PiP, solo un parón de 1 s y el directo siguió: la firma del intercambio
+actuando. El anuncio del día 20 queda sin explicar; las dos vías conocidas de pestaña sin hook salieron en la
+**1.0.1** (publicada ese día con `scripts/publish.mjs`, workflow limpio a la primera, `releases/latest` → v1.0.1).
 
 **Why:** son decisiones de producto y de alcance que no se deducen del código: por qué no Web Store, por qué repo
 público y no uno de releases, por qué el zip lleva carpeta fija, por qué la comprobación de versión no usa la API,
