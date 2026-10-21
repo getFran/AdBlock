@@ -1,6 +1,6 @@
 {
   "name": "adblock",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Chrome MV3 ad blocker: AdGuard DNR rulesets + cosmetic CSS, YouTube scriptlets, Twitch stream swap",
   "type": "module",
