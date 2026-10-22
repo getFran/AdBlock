@@ -1,6 +1,6 @@
 ---
 name: twitch-intercambio-verificado-primer-midroll-real
-description: Los siete primeros midrolls reales con el intercambio activo en el Chrome de Fran (2026-10-16 a 18): todos los polls con anuncio se sirvieron con backups a la calidad del player, pero en uno (esportmaniacos, 84 s, la última pestaña antes de su F5) la cadena cayó cinco veces a autoplay 360p porque los cinco tipos web venían con anuncios a la vez, y Fran vio la imagen congelada hasta F5; el cuarto (nissaxter) se vio perfecto y el quinto (ohnepixel, 74 s de anuncio a 1080p60, ya con la cadena del 17) fue limpio del todo: 40/40 intercambios entre site y popout, sin 360p, sin parón, fotogramas creciendo; el sexto y el séptimo (ibai, 107 y 52 s a 1080p60) igual de limpios salvo un reinicio evitable del player por backups un número por detrás, que desde el 18 se cubre repitiendo la última playlist. De ahí: contaminación de 2 s en vez de 5, el backup que solo anuncia su corte se usa saneado, se repite la última playlist de la misma calidad antes de bajar a 360p, y el guardián reinicia por imagen congelada.
+description: Los siete primeros midrolls reales con el intercambio activo en el Chrome de Fran (2026-10-16 a 18): todos los polls con anuncio se sirvieron con backups a la calidad del player, pero en uno (esportmaniacos, 84 s, la última pestaña antes de su F5) la cadena cayó cinco veces a autoplay 360p porque los cinco tipos web venían con anuncios a la vez, y Fran vio la imagen congelada hasta F5; el cuarto (nissaxter) se vio perfecto y el quinto (ohnepixel, 74 s de anuncio a 1080p60, ya con la cadena del 17) fue limpio del todo: 40/40 intercambios entre site y popout, sin 360p, sin parón, fotogramas creciendo; el sexto y el séptimo (ibai, 107 y 52 s a 1080p60) igual de limpios salvo un reinicio evitable del player por backups un número por detrás, que desde el 18 se cubre repitiendo la última playlist. De ahí: contaminación de 2 s en vez de 5, el backup que solo anuncia su corte se usa saneado, se repite la última playlist de la misma calidad antes de bajar a 360p, y el guardián reinicia por imagen congelada. Doce más del 18 (tarde) al 22 (ibai, caedrel, caedrel247; las nueve de caedrel del 22 con la 1.0.1): todos limpios, y el único artefacto fue el reinicio al FINAL de cada corte en caedrel247 (segmentos de 1 s, anuncios de 2 s: la cuenta de la página queda 19 números por detrás de los backups), que desde el 22 cubre el `pageRebase`. Cómo leer un lote nuevo: `npm run records`.
 metadata:
   type: project
 ---
@@ -80,6 +80,37 @@ registro a 1,2 MB deja solo las **10 últimas** playlists (`worker.recent` y `br
 un corte largo las del momento interesante ya no están; si hace falta verlas, comprimir el registro
 (`CompressionStream`) antes de mandarlo al service worker.
 
+**Doce cortes más, del 2026-10-18 (tarde) al 22** (leídos el 22 con `npm run records`, que resume cada corte de los
+registros; cada registro lleva todos los cortes de su pestaña y solo 300 s de muestras, así que cada corte se lee del
+primer registro que lo contiene). ibai 19:05, 20:05 y 20:45 UTC del 18 (62, 54 y 54 s), caedrel 21:07 del 18 (56 s),
+caedrel247 15:06, 15:31 y 15:43 del 19 (76, 40 y 54 s, 1.0.0, llegado por raid) y **nueve de caedrel el 22 con la
+1.0.1** (10:03 pod 5 de 184 s, 10:28, 11:20, 12:11, 12:37, 13:03 pod 5 de 98 s, 13:34, 13:59 pod 2, 14:25; 31 a 53
+polls cada uno). En los doce: **todos los polls `swapped` a 1080p60**, 0 `held`, 0 `merged`, 0 `blanked`, 0 caídas a
+360p, 1920 px en todas las muestras, ningún parón de reloj ni de imagen, UI de anuncio 0, guardián 0. La cadena es
+siempre `site` ↔ `popout` cada 2-4 s (cada uno anuncia su corte y entra el otro con token nuevo; `mobile_web` entró
+dos veces, `frontpage`/`embed` vienen a ratos con `ads`). `backupBehind` sale 4-8 veces por corte pero nunca llegó a
+`held` ni a reinicio: siempre había otro a la par. Dos cosas menores: ibai 20:45:27 tuvo un `Buffering` de 2 s a
+mitad de corte (`readyState` 2, `paused`, fotogramas +3) y siguió solo; y el `MEDIA-SEQUENCE shift` de los backups en
+caedrel crece a lo largo del día (0 → 4 → 5 → 6 → 7 → 11 → 12 → 13): cada corte deja la cuenta de la página un poco
+por delante de la de un token nuevo (el segmento corto de 0,3 s del final del pod cuenta como número), inofensivo
+porque va hacia delante.
+
+**El artefacto de caedrel247: reinicio al final de cada corte, tres de tres.** El canal emite segmentos de **1 s**
+y Twitch cose anuncios de **2 s**: durante el corte la playlist de la página avanza un número cada 2 s y los backups
+uno por segundo, así que al acabar la página vuelve **19, 3 y 10 números por detrás** de lo último entregado
+(`sequence back 91148 -> 91129 at a change of source (… -> page)`), el F-24 hace pause/play, `Idle → Ready →
+Buffering → Playing` en 1 s y `currentTime` a 0 (las muestras lo enseñan: `t 204 → 19`). En canales con segmentos
+de 2 s (ibai, caedrel, ohnepixel) los anuncios también son de 2 s y la página vuelve 1-2 por delante, como va el
+HLS en vivo: no pasa nada. Y en el pod 5 de caedrel (13:03 del 22) la página volvió 5 por delante y `t` siguió a
+1 s/s sin salto: hacia delante el player lo absorbe. **Cambio del 22 (`pageRebase`, 1.0.2):** al volver una playlist
+de la página tras una entrega de otra fuente, se le calcula con la misma alineación por `PROGRAM-DATE-TIME` que a
+los backups lo que hay que sumarle para continuar lo último entregado (+21 en el caso de las 15:07: su 91127 pasa
+a 91148), y ese desplazamiento (`state.pageShift`) se aplica a **todas** las playlists de la página hasta el
+siguiente master (que lo pone a 0); los backups del corte siguiente se alinean a la página ya desplazada, que es
+la numeración que conoce el player. Con segmentos iguales a ambos lados sale 0 y no toca nada; hacia delante
+sale negativo y también se aplica, por continuidad. Evento `pageRebased` (`shift`, `total`) y `worker.pageShift`
+en el registro. Prueba sintética en `test/twitch-playlists.mjs` con los números de caedrel247, ibai y caedrel.
+
 **Cambios (2026-10-16 y 17):** `blankAds` quita también el `DISCONTINUITY` y el `MAP` posteriores a un
 corte anunciado; las muestras llevan `frames` (`getVideoPlaybackQuality().totalVideoFrames`),
 `dropped`, `videoWidth`, `error`, nº de `<video>` y visibilidad; el guardián vigila desde el primer
@@ -106,7 +137,11 @@ player, y un `sequenceRestart` precedido de `backupBehind` es el reinicio por ba
 debería salir `backupHeld` en su lugar). Si vuelve a congelarse sin caídas a 360p, la siguiente hipótesis es el salto entre tokens (cada
 2-4 s una playlist de otro token con URLs distintas para los mismos números): no cambiar de fuente más
 de una vez por N s. Un registro se descarga tras **cada** corte cosido aunque todo vaya bien: que haya
-fichero no significa fallo, significa que hubo corte. Queda por ver un PREROLL de carga y un corte con
+fichero no significa fallo, significa que hubo corte. Con un lote nuevo de registros, lo primero es
+`npm run records -- --since=<fecha>`: un corte limpio es `swapped` = `polls`, `offQuality` 0, `clockStill` y
+`pictureStill` 0, `adUi` 0 y sin `RESTART` ni `sequenceRestart`; un `sequenceRestart` justo en `endedAt`
+(`… -> page`) es el caso de caedrel247 y desde el 22 debería salir `pageRebased` en su lugar, con `t` siguiendo
+sin volver a 0. Queda por ver un PREROLL de carga y un corte con
 el player a 720p60 o 480p. Relacionado:
 [[twitch-sonda-corte-cosido-real-y-los-siete-backups-limpios]] (la sonda que lo decidió),
 [[twitch-ningun-player-type-garantiza-stream-sin-anuncios]].

@@ -133,6 +133,8 @@
     sequenceShifts: new Map(), // F-23: backup variant URL -> shift, for the current break
     source: MAIN_SOURCE, // F-24: where the playlist being built comes from
     delivered: null, // F-24: { source, newest } of the last playlist given to the player
+    lastDelivered: null, // the text of that playlist, the reference when the page's own playlist comes back
+    pageShift: 0, // what the page's own MEDIA-SEQUENCE gets so that it continues the last delivery after a break, until the next master
     lastBackup: null, // { text, at, quality, source } of the last same-quality backup delivered, for HOLD_MS
     adState: 'idle', // ad-break.ts: idle | ad | recovering
     endedAt: 0,
@@ -193,6 +195,7 @@
           polls: state.polls,
           blankAnswered: state.blankAnswered,
           delivered: state.delivered,
+          pageShift: state.pageShift,
           recent: state.recent,
         },
       });
@@ -475,6 +478,16 @@
     if (index < 0 || first == null) return text;
     lines[index] = lines[index].replace(String(first), String(first + shift));
     return lines.join('\n');
+  }
+
+  // what to add to the page's own numbers when its playlist comes back after a delivery from another source, so that
+  // its segments continue the numbers the player holds. Live segments of 1 s and ad segments of 2 s (caedrel247,
+  // 2026-10-19) leave the page's count 19 numbers behind the backups' after a 76 s break: given as it came, the player
+  // waits for numbers that are 19 s away and F-24 restarts it at the end of every break. null when either side has no
+  // dated segment; 0 when the page already continues the delivery (the usual case with segments of the same length)
+  function pageRebase(page, delivered) {
+    const reference = sequenceReference(delivered);
+    return reference ? sequenceShift(page, reference) : null;
   }
 
   // --- playlist edits (m3u8.ts): on the lines of the original text, every tag kept where it was ----------
@@ -971,6 +984,7 @@
     if (newest == null) return;
     const previous = state.delivered;
     state.delivered = { source: state.source, newest };
+    state.lastDelivered = text;
     if (!previous || previous.source === state.source || newest >= previous.newest) return;
     log('sequence back ' + previous.newest + ' -> ' + newest + ' at a change of source (' + previous.source.slice(-24) + ' -> ' + state.source.slice(-24) + ')');
     emit('sequenceRestart', { from: previous.newest, to: newest });
@@ -979,9 +993,25 @@
 
   async function onFetch(text, url) {
     state.source = MAIN_SOURCE;
-    const out = await playlistFor(text, url);
+    // the page's numbers as the player knows them: every backup of this break is aligned to these (F-23)
+    let out = await playlistFor(shiftSequence(text, state.pageShift), url);
+    if (state.source === MAIN_SOURCE) out = rebasePage(out);
     followSequence(out);
     return out;
+  }
+
+  // the page's own playlist after a delivery from another source: its numbers get what continues that delivery, kept
+  // for every page playlist until the next master. With segments of the same length on both sides this is 0
+  function rebasePage(text) {
+    const previous = state.delivered;
+    if (!previous || previous.source === MAIN_SOURCE || !state.lastDelivered) return text;
+    const extra = pageRebase(text, state.lastDelivered);
+    if (!extra) return text;
+    state.pageShift += extra;
+    if (state.pageSequence) state.pageSequence = { ...state.pageSequence, sequence: state.pageSequence.sequence + extra }; // read before the rebase (F-23 reference)
+    log('page playlist numbered ' + (extra > 0 ? '+' : '') + extra + ' to continue the last delivery (newest ' + newestNumber(text) + ' -> ' + (newestNumber(text) + extra) + '; offset now ' + (state.pageShift > 0 ? '+' : '') + state.pageShift + ')');
+    emit('pageRebased', { shift: extra, total: state.pageShift });
+    return shiftSequence(text, extra);
   }
 
   // the last same-quality backup playlist, given again while it is fresh (HOLD_MS): the player sees a poll without a
@@ -1152,6 +1182,8 @@
       state.pageSequence = null;
       state.sequenceShifts.clear();
       state.delivered = null;
+      state.lastDelivered = null;
+      state.pageShift = 0;
       prewarmBackups('channel load');
     } catch (e) {
       log('master handling failed: ' + ((e && e.stack) || e));
@@ -1225,7 +1257,7 @@
   };
 
   // the pure pieces, for test/twitch-playlists.mjs
-  if (!RELEASE) scope.__adblockTwitchWorker = { detectAds, readSegments, isCleanBackup, mergeWithBackups, blankAds, stripAdDateranges, newestNumber, sequenceReference, sequenceShift, shiftSequence, parseVariants, pickVariant, summarize };
+  if (!RELEASE) scope.__adblockTwitchWorker = { detectAds, readSegments, isCleanBackup, mergeWithBackups, blankAds, stripAdDateranges, newestNumber, sequenceReference, sequenceShift, shiftSequence, pageRebase, parseVariants, pickVariant, summarize };
 
   log('worker hook installed');
 })(self);

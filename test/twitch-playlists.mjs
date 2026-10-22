@@ -31,13 +31,13 @@ const HOST = 'https://sae12.playlist.ttvnw.net/v1/playlist/';
 const CDN = 'https://video-edge-abc.sae12.abs.hls.ttvnw.net/v1/segment/';
 
 // a live playlist: `count` segments of 2 s from `seq` at `start`, two prefetch lines, the usual DATERANGEs
-function live({ seq, start, count = 14, prefetch = 2, extra = '' }) {
+function live({ seq, start, count = 14, prefetch = 2, extra = '', dur = 2 }) {
   const lines = ['#EXTM3U', '#EXT-X-VERSION:3', '#EXT-X-TARGETDURATION:6', '#EXT-X-MEDIA-SEQUENCE:' + seq, '#EXT-X-TWITCH-LIVE-SEQUENCE:' + seq];
   lines.push('#EXT-X-DATERANGE:ID="source-1",CLASS="twitch-stream-source",START-DATE="' + iso(start) + '",END-ON-NEXT="YES",X-TV-TWITCH-STREAM-SOURCE="live"');
   lines.push('#EXT-X-DATERANGE:ID="trigger-1",CLASS="twitch-trigger",START-DATE="' + iso(start) + '",END-ON-NEXT="YES",X-TV-TWITCH-TRIGGER-URL="https://video-weaver.example/trigger"');
   for (let i = 0; i < count; i++) {
-    lines.push('#EXT-X-PROGRAM-DATE-TIME:' + iso(start + i * 2000));
-    lines.push('#EXTINF:2.000,live');
+    lines.push('#EXT-X-PROGRAM-DATE-TIME:' + iso(start + i * dur * 1000));
+    lines.push('#EXTINF:' + dur.toFixed(3) + ',live');
     lines.push(CDN + 'live-' + (seq + i) + '.ts');
   }
   for (let i = 0; i < prefetch; i++) lines.push('#EXT-X-TWITCH-PREFETCH:' + CDN + 'live-' + (seq + count + i) + '.ts');
@@ -141,6 +141,26 @@ check('sequence alignment: the backup gets the numbers the page gives the same m
   const preroll = stitched({ seq: 0, start: t0, liveCount: 0, ads: 3 });
   assert.equal(W.sequenceReference(preroll, true), null);
   assert.equal(W.newestNumber(preroll), 2);
+});
+
+check('page rebase: after a break the page gets the numbers that continue the last delivery', () => {
+  // caedrel247, 2026-10-19 15:07: live segments of 1 s, ad segments of 2 s; the last backup delivered ends at 91146
+  // (15:07:15.890) and the page comes back with its 91127 at 15:07:17.595, 19 numbers behind
+  const t = Date.parse('2026-10-19T15:06:47.890Z');
+  const delivered = live({ seq: 91118, start: t, count: 29, dur: 1 });
+  const page = live({ seq: 91098, start: t + 705, count: 30, dur: 1 });
+  assert.equal(W.pageRebase(page, delivered), 21, 'the page segment starting inside 91147 gets 91148: +21 over its own 91127');
+  const rebased = W.shiftSequence(page, 21);
+  assert.ok(rebased.includes('#EXT-X-MEDIA-SEQUENCE:' + (91098 + 21)) && rebased.includes('#EXT-X-TWITCH-LIVE-SEQUENCE:91098'));
+  assert.equal(W.newestNumber(rebased), 91148 + 2, 'two prefetch lines past 91148');
+  // ibai, 2026-10-18 18:46: segments of 2 s on both sides, the page two numbers past the delivery as live HLS goes
+  const same = live({ seq: 2129, start: t0, count: 29 });
+  assert.equal(W.pageRebase(live({ seq: 2130, start: t0 + 840, count: 30 }), same), 0, 'the page already continues the delivery');
+  // caedrel, 2026-10-22 13:04: a pod of 5 with short ad segments left the page 3 numbers ahead of the delivery
+  const ahead = live({ seq: 6352, start: t0, count: 29 });
+  assert.equal(W.pageRebase(live({ seq: 6356, start: t0 + 1557, count: 30 }), ahead), -3, 'pulled back to the delivery');
+  // nothing to go by: no dated segment on one side
+  assert.equal(W.pageRebase(page, '#EXTM3U\n#EXT-X-MEDIA-SEQUENCE:5\n'), null);
 });
 
 check('variants: the page v2 master and a backup v1 master, picked by quality and codec family', () => {

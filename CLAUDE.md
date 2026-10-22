@@ -20,7 +20,7 @@ alcance (carcasa que consume piezas mantenidas por otros), no con otro.
 | Icono | `icons/dogwifhatnike.png` (elección de Fran, 2026-10-15); los `icons/icon-{16,32,48,128}.png` están renderizados y commiteados, el build solo los copia. Para cambiarlo, regenerar los cuatro tamaños (recorte cuadrado centrado) y commitearlos |
 | Repo | `getFran/AdBlock`, **público** desde el 2026-10-18 (Fran: «lo que tú veas mejor»; antes privado). Historial auditado: sin secretos; `.claude/` y este fichero se quedan dentro |
 | Rama | `main` |
-| Versión | `1.0.1` en `package.json` (2026-10-21: recarga de pestañas al instalar y reintento de `readScript`; la 1.0.0 salió el 2026-10-19); la Action construye la del tag (`EXT_VERSION`) |
+| Versión | `1.0.2` en `package.json` (2026-10-22, **sin publicar todavía**: la playlist de la página se renumera al volver de un corte en vez de reiniciar el player; la 1.0.1 salió el 2026-10-21 con la recarga de pestañas al instalar y el reintento de `readScript`; la 1.0.0 el 2026-10-19); la Action construye la del tag (`EXT_VERSION`) |
 | Licencia | **GPL-3.0** (`LICENSE`): las listas y scriptlets de AdGuard y uAssets son GPL-3.0; Purple es Apache-2.0 y vaft MIT, atribuidos en `THIRD_PARTY_NOTICES.md`, que va dentro del zip |
 | Despliegue | **GitHub Releases**: `.github/workflows/release.yml` publica `getfran-adblock-<versión>.zip` (carpeta `getfran-adblock/` dentro, nombre fijo para descomprimir encima y conservar el ID) al empujar un tag `v*`, y los lunes si hay listas nuevas. En local, `npm run build` deja `dist/` para "Load unpacked" |
 
@@ -54,7 +54,13 @@ alcance (carcasa que consume piezas mantenidas por otros), no con otro.
   dentro de la variante es el sospechoso del decodificador atascado. Sin nada, merge por
   `PROGRAM-DATE-TIME` y, para lo que quede, el **blank segment** de Purple (viene de vaft, MIT, aviso en
   el fichero). `MEDIA-SEQUENCE` del backup alineado a la numeración de la página, `EXT-X-MAP` como lo
-  hace Purple en el merge. Fuera de un corte las playlists llegan al player sin tocar. **Ni recorte de
+  hace Purple en el merge. Fuera de un corte las playlists llegan al player sin tocar, **salvo el
+  `MEDIA-SEQUENCE`** desde el 2026-10-22: al volver de un corte, la playlist de la página se renumera
+  (`pageRebase`, misma alineación por `PROGRAM-DATE-TIME` que la de los backups) para que continúe lo último
+  entregado, y ese desplazamiento se mantiene hasta el siguiente master. Motivo: en caedrel247 (segmentos de
+  1 s, anuncios de 2 s) la cuenta de la página quedaba 19 números por detrás de los backups tras 76 s de corte
+  y el F-24 reiniciaba el player **al final de cada corte** (tres de tres el 2026-10-19). Con segmentos de la
+  misma duración a ambos lados el desplazamiento sale 0 y no cambia nada. **Ni recorte de
   segmentos ni proxies.** Pause/play solo si hace falta: cuando el número de secuencia retrocede al
   cambiar de fuente (F-24 de Purple; desde el 2026-10-18 solo si no había playlist reciente que repetir) y,
   desde la página, si el vídeo lleva 6 s parado tras el corte (pause/play y, si sigue, reload suave); desde el
@@ -207,6 +213,7 @@ build.mjs        lee build.config.mjs y escribe dist/:
 | `npm run build` | regenera `dist/` (≈1 s), build de desarrollo: registros, diagnóstico, consola |
 | `npm run build:release` | el `dist/` que se reparte: sin nada de eso (`EXT_VERSION=1.2.3` fija la versión) |
 | `npm test` | `test/twitch-playlists.mjs`: las piezas puras del worker, sin navegador |
+| `npm run records -- [--since=YYYY-MM-DD] [--verbose]` | `test/twitch-records.mjs`: resume cada corte de los registros de `Descargas\AdBlock\` (cadena de backups, `held`/`merged`/`blanked`, reinicios, `pageRebased`, y sobre las muestras: parones de reloj o de imagen, anchura, UI de anuncio). Cada registro lleva todos los cortes de su pestaña pero solo 300 s de muestras: cada corte se lee del primer registro que lo contiene. Es lo primero que se lanza cuando Fran trae registros nuevos |
 | `npm run smoke` | carga `dist/` en el Chromium de Playwright y comprueba manifest, permisos, content scripts, alarma y globales (vale para los dos builds; `ADBLOCK_DIST=<carpeta>` prueba un zip descomprimido) |
 | `npm run probe -- [--twitch=<canal>] [--seconds=90] [--pip] [--navigate] [--race]` | abre un directo con el build de `dist/` (o `ADBLOCK_DIST`) y dice si el hook del worker está activo **sin depender de los globales** (los masters de usher: los tokens de respaldo solo se piden si nuestro worker corre), si el vídeo avanza y si sale la UI de anuncio; `--pip` y `--navigate` ejercitan el picture-in-picture y el mini-player. Es la única forma de probar la release en Twitch |
 | `npm run vendor` | refresca `vendor/uassets-quick-fixes.txt` (GitHub) y `vendor/adguard-base-youtube.txt` (las reglas de YouTube de la lista Base viva de AdGuard); commitéalos |
@@ -241,7 +248,11 @@ hasta pulsar F5** con el reloj corriendo: `currentTime` no detecta un decodifica
 muestras llevan `frames`, el guardián reinicia también por imagen parada y `verify` cuenta "picture frozen"
 como fallo; el cuarto, ya con fotogramas, se vio perfecto, y los tres siguientes (ohnepixel 74 s, ibai 107 s y
 52 s, todos a 1080p60) limpios: el único artefacto fue un reinicio por retroceso de secuencia con los backups un
-número atrás, cubierto desde el 18 con el `held`. Un registro cae en `Descargas\AdBlock\` tras
+número atrás, cubierto desde el 18 con el `held`. **Doce más del 2026-10-18 (tarde) al 22** (ibai, caedrel y
+caedrel247, todos a 1080p60; las nueve de caedrel del 22 ya con la 1.0.1): todos los polls con anuncio
+intercambiados a la calidad del player, sin `held`, sin 360p, sin parón de reloj ni de imagen, sin UI de anuncio;
+el único artefacto fue el reinicio al final de cada corte de caedrel247 (segmentos de 1 s) que arregla el
+`pageRebase`. Un registro cae en `Descargas\AdBlock\` tras
 **cada** corte, también cuando va bien. Falta ver un PREROLL de carga.
 
 **Al limpiar navegadores de prueba colgados, nunca `taskkill //IM chrome.exe`:** mata el Chrome de

@@ -1,6 +1,6 @@
 {
   "name": "adblock",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "description": "Chrome MV3 ad blocker: AdGuard DNR rulesets + cosmetic CSS, YouTube scriptlets, Twitch stream swap",
   "type": "module",
@@ -12,6 +12,7 @@
     "build:release": "node build.mjs --release",
     "vendor": "node build.mjs --vendor",
     "test": "node test/twitch-playlists.mjs",
+    "records": "node test/twitch-records.mjs",
     "smoke": "node test/smoke.mjs",
     "probe": "node test/twitch-probe.mjs",
     "verify": "node test/verify.mjs",
