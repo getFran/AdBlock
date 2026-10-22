@@ -20,7 +20,7 @@ alcance (carcasa que consume piezas mantenidas por otros), no con otro.
 | Icono | `icons/dogwifhatnike.png` (elección de Fran, 2026-10-15); los `icons/icon-{16,32,48,128}.png` están renderizados y commiteados, el build solo los copia. Para cambiarlo, regenerar los cuatro tamaños (recorte cuadrado centrado) y commitearlos |
 | Repo | `getFran/AdBlock`, **público** desde el 2026-10-18 (Fran: «lo que tú veas mejor»; antes privado). Historial auditado: sin secretos; `.claude/` y este fichero se quedan dentro |
 | Rama | `main` |
-| Versión | `1.0.2` en `package.json` (2026-10-22, **sin publicar todavía**: la playlist de la página se renumera al volver de un corte en vez de reiniciar el player; la 1.0.1 salió el 2026-10-21 con la recarga de pestañas al instalar y el reintento de `readScript`; la 1.0.0 el 2026-10-19); la Action construye la del tag (`EXT_VERSION`) |
+| Versión | `1.0.2` en `package.json` (2026-10-22, **sin publicar todavía**, verificada esa tarde en cuatro cortes reales de caedrel247: la playlist de la página se renumera al volver de un corte en vez de reiniciar el player; la 1.0.1 salió el 2026-10-21 con la recarga de pestañas al instalar y el reintento de `readScript`; la 1.0.0 el 2026-10-19); la Action construye la del tag (`EXT_VERSION`) |
 | Licencia | **GPL-3.0** (`LICENSE`): las listas y scriptlets de AdGuard y uAssets son GPL-3.0; Purple es Apache-2.0 y vaft MIT, atribuidos en `THIRD_PARTY_NOTICES.md`, que va dentro del zip |
 | Despliegue | **GitHub Releases**: `.github/workflows/release.yml` publica `getfran-adblock-<versión>.zip` (carpeta `getfran-adblock/` dentro, nombre fijo para descomprimir encima y conservar el ID) al empujar un tag `v*`, y los lunes si hay listas nuevas. En local, `npm run build` deja `dist/` para "Load unpacked" |
 
@@ -252,7 +252,8 @@ número atrás, cubierto desde el 18 con el `held`. **Doce más del 2026-10-18 (
 caedrel247, todos a 1080p60; las nueve de caedrel del 22 ya con la 1.0.1): todos los polls con anuncio
 intercambiados a la calidad del player, sin `held`, sin 360p, sin parón de reloj ni de imagen, sin UI de anuncio;
 el único artefacto fue el reinicio al final de cada corte de caedrel247 (segmentos de 1 s) que arregla el
-`pageRebase`. Un registro cae en `Descargas\AdBlock\` tras
+`pageRebase`, verificado esa misma tarde en cuatro cortes de caedrel247 con la 1.0.2 (renumerado +11/+11/+20/+5
+al acabar cada uno, ningún reinicio, `t` y fotogramas sin saltos). Un registro cae en `Descargas\AdBlock\` tras
 **cada** corte, también cuando va bien. Falta ver un PREROLL de carga.
 
 **Al limpiar navegadores de prueba colgados, nunca `taskkill //IM chrome.exe`:** mata el Chrome de

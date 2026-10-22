@@ -110,6 +110,15 @@ siguiente master (que lo pone a 0); los backups del corte siguiente se alinean a
 la numeración que conoce el player. Con segmentos iguales a ambos lados sale 0 y no toca nada; hacia delante
 sale negativo y también se aplica, por continuidad. Evento `pageRebased` (`shift`, `total`) y `worker.pageShift`
 en el registro. Prueba sintética en `test/twitch-playlists.mjs` con los números de caedrel247, ibai y caedrel.
+**Verificado la misma tarde en cuatro cortes reales de caedrel247 con la 1.0.2** (15:36 de 69 s, 16:26 de 129 s,
+17:03 pod 3 de 109 s, 17:16 de 77 s; 41 a 73 polls, todos `swapped` a 1080p60 salvo un `held` que funcionó): al
+acabar cada uno `page playlist numbered +11 / +11 / +20 / +5` (offset acumulado +47), **ningún `sequence back`,
+ningún pause/play**, `t` siguiendo a 1 s/s y 60 fotogramas/s a través del final del corte. El offset acumulado deja
+a la página 1-3 números por delante de cada token nuevo (el `ceil` de cada renumerado) y el `shift` de los backups
+crece 0 → 1 → 2 → 3: hacia delante, inofensivo. El primero fue con la pestaña oculta (298 de 300 muestras): el player
+de Twitch se bajó solo a 360p y los backups le siguieron a 360p (`offQuality` 6), y `frames` no crece con la
+pestaña oculta aunque `t` sí; por eso el guardián exige pestaña visible, y un `offQuality` con `hidden` alto no es
+un fallo de la cadena.
 
 **Cambios (2026-10-16 y 17):** `blankAds` quita también el `DISCONTINUITY` y el `MAP` posteriores a un
 corte anunciado; las muestras llevan `frames` (`getVideoPlaybackQuality().totalVideoFrames`),
