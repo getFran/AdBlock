@@ -253,7 +253,13 @@ caedrel247, todos a 1080p60; las nueve de caedrel del 22 ya con la 1.0.1): todos
 intercambiados a la calidad del player, sin `held`, sin 360p, sin parón de reloj ni de imagen, sin UI de anuncio;
 el único artefacto fue el reinicio al final de cada corte de caedrel247 (segmentos de 1 s) que arregla el
 `pageRebase`, verificado esa misma tarde en cuatro cortes de caedrel247 con la 1.0.2 (renumerado +11/+11/+20/+5
-al acabar cada uno, ningún reinicio, `t` y fotogramas sin saltos). Un registro cae en `Descargas\AdBlock\` tras
+al acabar cada uno, ningún reinicio, `t` y fotogramas sin saltos). **Catorce más el 23** (jaimemellado_, 1080p60,
+1.0.2): doce limpios del todo; en los tres cortes de varios pods, al arrancar el segundo pod **los cinco tipos web
+volvieron con anuncio a la vez** (un token pedido con el pod en marcha se une a él y trae el anuncio cosido, y los
+que ya estaban lo reciben igual): una vez lo cubrió el `held`, y dos veces agotó sus 3 s y el player vio `autoplay`
+360p durante 6 s y 40 s, con 1 s de buffering al cambiar, sin reinicio, sin parón y sin UI de anuncio. Es el último
+recurso por diseño (contenido a 360p antes que pantalla en negro): en ese tramo no existe sesión a 1080p sin
+anuncio, el worker lo comprobó pidiendo los cinco tokens cada 3-4 s. Un registro cae en `Descargas\AdBlock\` tras
 **cada** corte, también cuando va bien. Falta ver un PREROLL de carga.
 
 **Al limpiar navegadores de prueba colgados, nunca `taskkill //IM chrome.exe`:** mata el Chrome de
