@@ -131,8 +131,9 @@ alcance (carcasa que consume piezas mantenidas por otros), no con otro.
   `@adguard/*@latest`, `npm run vendor`, y si algo cambió (ignorando la fecha de los encabezados) commitea a
   `main`, sube el patch, etiqueta y publica; si no, no hace nada. (4) **GPL-3.0** por las listas. (5) Popup en
   inglés. `npm run smoke` carga `dist/` en Playwright y comprueba manifest, permisos, content scripts, alarma y que
-  los globales no estén en la release. **Pendiente que Fran decida:** el icono es una imagen del meme dogwifhat y no
-  está claro quién tiene sus derechos; en un repo público conviene uno propio.
+  los globales no estén en la release. **El icono se queda como está** (decidido el 2026-10-24): es el meme
+  dogwifhat y sus derechos no están claros, se le planteó en un repo público y dijo que no lo cambia. No volver a
+  proponerlo.
 - **Toolchain:** Node ≥ 22 (en la máquina hay 24) con esbuild. Fuente en `src/` en JavaScript
   plano; `build.mjs` genera `dist/` (ignorado en git). `npm run build` funciona desde un clon limpio
   con solo `npm install`: no descarga nada de la red.

@@ -1,6 +1,6 @@
 ---
 name: distribucion-por-github-releases
-description: Decidido el 2026-10-18: la extensión se reparte desde el repo público getFran/AdBlock como zip en GitHub Releases (no Web Store), con un build de release sin nada de depuración, un aviso de versión nueva dentro de la extensión (badge NEW leyendo la redirección de /releases/latest), una Action que publica con cada tag y los lunes con listas nuevas, licencia GPL-3.0 y todo lo público en inglés. Qué se descartó y por qué, y qué queda pendiente (el icono).
+description: Decidido el 2026-10-18: la extensión se reparte desde el repo público getFran/AdBlock como zip en GitHub Releases (no Web Store), con un build de release sin nada de depuración, un aviso de versión nueva dentro de la extensión (badge NEW leyendo la redirección de /releases/latest), una Action que publica con cada tag y los lunes con listas nuevas, licencia GPL-3.0 y todo lo público en inglés. Qué se descartó y por qué. El icono quedó zanjado el 2026-10-24: se queda el dogwifhat.
 metadata:
   type: project
 ---
@@ -77,8 +77,10 @@ Antes de tocar `package.json` o `vendor/`, `git pull`: los lunes puede haber un 
 ejecución programada (2026-10-19) falló con `npm error 429 Too Many Requests` del registro de npm hacia el runner:
 las IPs compartidas de GitHub Actions tienen cuota en npmjs.org; desde entonces el paso de listas reintenta con
 espera creciente y npm lleva `fetch-retries` subidos. Si llega un correo de "Release failed" un lunes, mirar primero
-si es eso (el log acaba en `E429`) antes de buscar un fallo del build. **Pendiente que
-decida Fran:** el icono es el meme dogwifhat, sin derechos claros, no apto para un repo público a largo plazo.
+si es eso (el log acaba en `E429`) antes de buscar un fallo del build. **El icono se queda como está** (decidido el 2026-10-24: *"el logo se queda como esta"*). Se le planteó que es el
+meme dogwifhat, sin derechos claros, en un repo público con licencia GPL-3.0, y decidió no cambiarlo. **No se lo
+vuelvas a proponer**: la duda ya se le expuso entera y la respuesta fue esa. Si algún día hay que tocarlo, son los
+cuatro tamaños de `icons/icon-{16,32,48,128}.png` regenerados con recorte cuadrado centrado, y commitearlos.
 Relacionado: [[twitch-intercambio-verificado-primer-midroll-real]] (la evidencia que el build de release ya no
 genera: para investigar un corte hay que cargar el build de desarrollo),
 [[adguard-tracking-protection-bloquea-cualquier-host-umami]] (`getfran.dev` desactivado solo en desarrollo).
