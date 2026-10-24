@@ -260,7 +260,19 @@ que ya estaban lo reciben igual): una vez lo cubrió el `held`, y dos veces agot
 360p durante 6 s y 40 s, con 1 s de buffering al cambiar, sin reinicio, sin parón y sin UI de anuncio. Es el último
 recurso por diseño (contenido a 360p antes que pantalla en negro): en ese tramo no existe sesión a 1080p sin
 anuncio, el worker lo comprobó pidiendo los cinco tokens cada 3-4 s. Un registro cae en `Descargas\AdBlock\` tras
-**cada** corte, también cuando va bien. Falta ver un PREROLL de carga.
+**cada** corte, también cuando va bien. **Quince más en ibai** del 23 por la tarde al 24 de madrugada (1080p60, 1.0.2,
+siete horas seguidas): el lote más limpio hasta hoy, todos los polls intercambiados a 1080p60, sin `held`, sin
+`offQuality`, sin reinicios y sin parones, con solo 1-5 cambios de fuente por corte. **Tres más en champi14 el 24**,
+con los de 3 y 6 pods limpios del todo: que el segundo pod cosa el anuncio en los cinco tokens web a la vez depende
+del canal, no del número de pods. **Y el primer PREROLL de carga** (trackingthepros, 24, 51 s): toda sesión que
+empieza durante el pod nace dentro de él, así que los cinco tokens web vuelven con anuncio y solo `autoplay@360p`
+está limpio los primeros 31 s, hasta que `site` vuelve a 1080p60; el player arrancaba en 360p por su cuenta y no se
+notó, pero `autoplay` no pasa de 360p y el `held` no cubre un arranque en frío. Al acabar, la página devuelve su
+playlist numerada en **27** mientras el player sostiene **15537** (la página numera desde la sesión, los backups desde
+el principio de la emisión, mismo `PROGRAM-DATE-TIME`) y el `pageRebase` la renumera **+15510** sin reinicio: el
+rebase del 22 no era un apaño para caedrel247, es lo que hace que un preroll funcione. El `PlayerError
+MasterPlaylist "not a valid M3U8"` de cada corte es el master `picture-by-picture` respondido vacío a propósito, lo
+acusa el mini player y no el principal.
 
 **Al limpiar navegadores de prueba colgados, nunca `taskkill //IM chrome.exe`:** mata el Chrome de
 Fran (memoria `no-matar-chrome-por-nombre-de-imagen` en `PyCharm Projects`).

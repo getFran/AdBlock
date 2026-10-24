@@ -1,6 +1,6 @@
 ---
 name: twitch-intercambio-verificado-primer-midroll-real
-description: Los siete primeros midrolls reales con el intercambio activo en el Chrome de Fran (2026-10-16 a 18): todos los polls con anuncio se sirvieron con backups a la calidad del player, pero en uno (esportmaniacos, 84 s, la última pestaña antes de su F5) la cadena cayó cinco veces a autoplay 360p porque los cinco tipos web venían con anuncios a la vez, y Fran vio la imagen congelada hasta F5; el cuarto (nissaxter) se vio perfecto y el quinto (ohnepixel, 74 s de anuncio a 1080p60, ya con la cadena del 17) fue limpio del todo: 40/40 intercambios entre site y popout, sin 360p, sin parón, fotogramas creciendo; el sexto y el séptimo (ibai, 107 y 52 s a 1080p60) igual de limpios salvo un reinicio evitable del player por backups un número por detrás, que desde el 18 se cubre repitiendo la última playlist. De ahí: contaminación de 2 s en vez de 5, el backup que solo anuncia su corte se usa saneado, se repite la última playlist de la misma calidad antes de bajar a 360p, y el guardián reinicia por imagen congelada. Doce más del 18 (tarde) al 22 (ibai, caedrel, caedrel247; las nueve de caedrel del 22 con la 1.0.1): todos limpios, y el único artefacto fue el reinicio al FINAL de cada corte en caedrel247 (segmentos de 1 s, anuncios de 2 s: la cuenta de la página queda 19 números por detrás de los backups), que desde el 22 cubre el `pageRebase`. Catorce más el 23 (jaimemellado_, 1.0.2): doce limpios; en los cortes de varios pods el segundo pod cose el anuncio en los cinco tipos web a la vez (los tokens nuevos se unen al pod en marcha) y, agotado el `held`, la cadena acaba en autoplay 360p por diseño (6 s y 40 s, sin reinicio ni parón): un `offQuality` con todos los backups en `ads` no es fallo de la cadena. Cómo leer un lote nuevo: `npm run records`.
+description: Los siete primeros midrolls reales con el intercambio activo en el Chrome de Fran (2026-10-16 a 18): todos los polls con anuncio se sirvieron con backups a la calidad del player, pero en uno (esportmaniacos, 84 s, la última pestaña antes de su F5) la cadena cayó cinco veces a autoplay 360p porque los cinco tipos web venían con anuncios a la vez, y Fran vio la imagen congelada hasta F5; el cuarto (nissaxter) se vio perfecto y el quinto (ohnepixel, 74 s de anuncio a 1080p60, ya con la cadena del 17) fue limpio del todo: 40/40 intercambios entre site y popout, sin 360p, sin parón, fotogramas creciendo; el sexto y el séptimo (ibai, 107 y 52 s a 1080p60) igual de limpios salvo un reinicio evitable del player por backups un número por detrás, que desde el 18 se cubre repitiendo la última playlist. De ahí: contaminación de 2 s en vez de 5, el backup que solo anuncia su corte se usa saneado, se repite la última playlist de la misma calidad antes de bajar a 360p, y el guardián reinicia por imagen congelada. Doce más del 18 (tarde) al 22 (ibai, caedrel, caedrel247; las nueve de caedrel del 22 con la 1.0.1): todos limpios, y el único artefacto fue el reinicio al FINAL de cada corte en caedrel247 (segmentos de 1 s, anuncios de 2 s: la cuenta de la página queda 19 números por detrás de los backups), que desde el 22 cubre el `pageRebase`. Catorce más el 23 (jaimemellado_, 1.0.2): doce limpios; en los cortes de varios pods el segundo pod cose el anuncio en los cinco tipos web a la vez (los tokens nuevos se unen al pod en marcha) y, agotado el `held`, la cadena acaba en autoplay 360p por diseño (6 s y 40 s, sin reinicio ni parón): un `offQuality` con todos los backups en `ads` no es fallo de la cadena. Quince más en ibai del 23 (tarde) al 24 de madrugada, el lote más limpio hasta hoy (todo `swapped` a 1080p60, 0 `held`, 0 `offQuality`, 0 reinicios en siete horas), y tres de champi14 el 24, con los de varios pods limpios del todo: el segundo pod contaminando los cinco tokens depende del canal, no del número de pods. **Y el primer PREROLL de carga (trackingthepros, 24, 51 s):** los cinco tokens web nacen dentro del pod y solo `autoplay@360p` está limpio 31 s hasta que `site` vuelve a 1080p60; al acabar, la página devuelve su playlist numerada en 27 con el player sosteniendo 15537 (ella numera desde la sesión, los backups desde el principio de la emisión) y el `pageRebase` la renumera +15510 sin reinicio: el rebase del 22 no era un apaño para caedrel247, es lo que hace que un preroll funcione. Cómo leer un lote nuevo: `npm run records`.
 metadata:
   type: project
 ---
@@ -142,6 +142,47 @@ sesión web sin anuncio en ese tramo y el worker lo comprobó cada 3-4 s. Por co
 de cómo Twitch rellena el pod, no de la cadena. El `PlayerError MasterPlaylist "not a valid M3U8"` 8-10 s antes de
 cada corte sigue siendo el master `picture-by-picture` respondido vacío (está en todos los registros del 22 y del 23).
 
+**Quince cortes más en ibai y el PRIMER PREROLL de carga (2026-10-23 tarde a 2026-10-24, 1.0.2).** Los quince
+de ibai (17:37, 17:57, 18:17, 19:42, 20:02 pod 2 de 165 s, 20:22 de 134 s, 20:42, 21:22, 21:42, 22:22, 22:47, 23:07 de
+82 s, 23:27 UTC del 23, y 00:27 y 00:47 del 24; siete horas seguidas de pestaña) son el lote más limpio hasta hoy:
+**todos los polls `swapped` a 1080p60**, 0 `held`, 0 `merged`, 0 `blanked`, 0 `offQuality`, 0 reinicios, UI de anuncio
+0, 1920 px en todas las muestras y ningún parón de reloj ni de imagen. Con 1 a 5 cambios de fuente por corte, frente a
+los 9-24 de jaimemellado_: en ibai el par `site`/`popout` aguanta limpio varios polls seguidos. El `PlayerError
+MasterPlaylist "not a valid M3U8"` sigue saliendo 2-10 s antes de cada corte y sigue siendo el master
+`picture-by-picture` que `onPbypMaster` responde vacío a propósito (`new Response("")`): lo acusa el mini player, no
+el principal, que no se entera.
+
+**El PREROLL (2026-10-24 09:00:13Z, trackingthepros, 51 s, pod 1) es lo que faltaba por ver, y lo que valida el
+`pageRebase` de verdad.** Secuencia leída del registro: el master de `site` ofrece las cinco variantes y el player
+arranca pidiendo **360p**, y su poll #1 ya es SSAI con los tres segmentos del anuncio. Al pedir los backups, **los
+cinco tipos web vuelven con anuncio a la vez** (`site=ads popout=ads frontpage=ads mobile_web=ads embed=ads`) y solo
+`autoplay=clean@360p`: un preroll es la misma situación que el segundo pod del 23, porque toda sesión que empieza
+ahora nace dentro del pod. El worker sirve `autoplay@360p` 31 s (numeración propia, `shift n/a`: la página no tiene
+todavía ningún segmento limpio con fecha al que alinearse), hasta que a los 32 s `site` vuelve **limpio a 1080p60** y
+se queda con el resto. Las muestras lo calcan: 6 a 0 px, 32 a 640 px, 38 a 1920 px, con `t` 0 → 69,2 y `frames`
+0 → 3170 sin un solo hueco.
+
+**Y entonces el número gordo.** Al acabar el anuncio la página devuelve su playlist limpia numerada en **27**,
+mientras el player sostiene lo último entregado, **15537**: la página numera desde su sesión (empezó hace 51 s) y los
+backups desde el principio de la emisión. `pageRebase` la renumera **+15510** (`newest 27 -> 15537`) y el corte
+termina sin reinicio. Lo mismo con las playlists crudas del registro: página `seq=18,19,20,21,22` y entregado
+`seq=15528…15532` con el **mismo `PROGRAM-DATE-TIME`** en cada par, diferencia exacta 15510. La consecuencia es que
+el `pageRebase` escrito el 22 para los +19 de caedrel247 **no es un apaño de un canal raro: es lo que hace que un
+preroll funcione**. Sin él el player recibe 27 teniendo 15537, que es exactamente la condición del F-24, y cada
+carga de página con preroll acabaría reiniciando el player. En 1.0.1 y anteriores eso pasaba en todos.
+
+**La pega del preroll, y es la del 23 otra vez:** `autoplay` solo publica 360p/160p, así que mientras los cinco
+tokens web estén dentro del pod no hay fuente limpia por encima de 360p. Aquí no se notó porque el player arrancaba
+en 360p por su cuenta y coincidieron, pero un visitante que vuelva con 1080p60 recordado vería esos 31 s a 360p. El
+`held` tampoco cubre un preroll: en frío no hay playlist anterior de esa calidad que repetir. Sigue siendo el
+último recurso por diseño (contenido a 360p antes que pantalla negra) y solo cambia si Fran prefiere lo contrario.
+
+**Tres cortes más en champi14 el 24 (09:10 pod 3 de 121 s, 09:36, 10:02 pod 6 de 110 s)**, y matizan lo del 23: los de
+varios pods salieron **limpios del todo** (46 y 59 polls, todos `swapped` a 1080p60, 0 `held`, 0 `offQuality`), con 24
+y 28 cambios de fuente. Rotando entre `site` y `popout` casi en cada poll siempre había uno limpio. O sea que el
+segundo pod contaminando los cinco tokens a la vez pasa en unos canales y en otros no, como ya se vio entre
+caedrel y jaimemellado_: no es consecuencia del número de pods.
+
 **Cambios (2026-10-16 y 17):** `blankAds` quita también el `DISCONTINUITY` y el `MAP` posteriores a un
 corte anunciado; las muestras llevan `frames` (`getVideoPlaybackQuality().totalVideoFrames`),
 `dropped`, `videoWidth`, `error`, nº de `<video>` y visibilidad; el guardián vigila desde el primer
@@ -174,7 +215,8 @@ fichero no significa fallo, significa que hubo corte. Con un lote nuevo de regis
 (`… -> page`) es el caso de caedrel247 y desde el 22 debería salir `pageRebased` en su lugar, con `t` siguiendo
 sin volver a 0. Un `offQuality` > 0 con `held` 3 justo antes y, en el log del worker, `site=ads … embed=ads` ronda
 tras ronda es el segundo pod del 23: Twitch cosiendo el anuncio en todos los tokens web; la cadena hizo lo previsto
-y solo tendría sentido tocar algo si Fran prefiere negro a 1080p antes que 360p. Queda por ver un PREROLL de carga y un corte con
-el player a 720p60 o 480p. Relacionado:
+y solo tendría sentido tocar algo si Fran prefiere negro a 1080p antes que 360p. El PREROLL de carga ya se vio (2026-10-24, arriba); queda un corte con
+el player a 720p60 o 480p, y un preroll con el player arrancando a 1080p60 para ver cuánto pesa el techo de 360p
+de `autoplay`. Relacionado:
 [[twitch-sonda-corte-cosido-real-y-los-siete-backups-limpios]] (la sonda que lo decidió),
 [[twitch-ningun-player-type-garantiza-stream-sin-anuncios]].
