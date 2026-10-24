@@ -262,9 +262,12 @@ recurso por diseño (contenido a 360p antes que pantalla en negro): en ese tramo
 anuncio, el worker lo comprobó pidiendo los cinco tokens cada 3-4 s. Un registro cae en `Descargas\AdBlock\` tras
 **cada** corte, también cuando va bien. **Quince más en ibai** del 23 por la tarde al 24 de madrugada (1080p60, 1.0.2,
 siete horas seguidas): el lote más limpio hasta hoy, todos los polls intercambiados a 1080p60, sin `held`, sin
-`offQuality`, sin reinicios y sin parones, con solo 1-5 cambios de fuente por corte. **Tres más en champi14 el 24**,
-con los de 3 y 6 pods limpios del todo: que el segundo pod cosa el anuncio en los cinco tokens web a la vez depende
-del canal, no del número de pods. **Y el primer PREROLL de carga** (trackingthepros, 24, 51 s): toda sesión que
+`offQuality`, sin reinicios y sin parones, con solo 1-5 cambios de fuente por corte. **Seis más en champi14 el 24**,
+todos limpios, con los de 3 y 6 pods limpios del todo: que el segundo pod cosa el anuncio en los cinco tokens web a
+la vez depende del canal, no del número de pods. Uno de ellos, **el primero a 720p60** (11:19, 52 s, con el player
+bajado a mano), cierra la otra duda: los masters de los backups ofrecían `1080p60/720p60/480p/360p/160p` y el worker
+sirvió `site@720p60` y `popout@720p60` los 30 polls, 0 `offQuality`, las 77 muestras a 1280 px sin parones. La cadena
+empareja la calidad del player, no coge la mejor. Queda 480p. **Y el primer PREROLL de carga** (trackingthepros, 24, 51 s): toda sesión que
 empieza durante el pod nace dentro de él, así que los cinco tokens web vuelven con anuncio y solo `autoplay@360p`
 está limpio los primeros 31 s, hasta que `site` vuelve a 1080p60; el player arrancaba en 360p por su cuenta y no se
 notó, pero `autoplay` no pasa de 360p y el `held` no cubre un arranque en frío. Al acabar, la página devuelve su
