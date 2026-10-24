@@ -274,15 +274,15 @@ a 852 px y 30 fps, sin reinicio ni parones). El emparejamiento de calidad queda 
 ya en 1080p60** (12:52, jaimemellado_, 39 s) mide lo que cuesta el techo de `autoplay`: los cinco tokens web nacen
 con el anuncio cosido, solo `autoplay@360p30` está limpio, y el espectador ve **~31 s de los 39 a 360p y 30 fps**
 antes de que `site` vuelva limpio a 1080p60, eso sí sin parón, sin reinicio y sin UI de anuncio (20/20 `swapped`,
-rebase +1444). No tiene arreglo inmediato: el `held` no cubre un arranque en frío. **Sondeado ese mismo día**
-(`test/twitch-ladders.mjs`): el techo de 360p es del **tipo de player**, no de la plataforma, porque `autoplay` y
-`picture-by-picture` están capados en web, android e ios por igual mientras los cinco tipos principales dan la
-escalera entera en las tres. Así que `site` en android sí tendría 1080p60, y lo único sin medir es si **también**
-se queda fuera del pod. Desde fuera no se puede medir: cada token nuevo abre una sesión y a una sesión nueva Twitch
-le puede servir su propio preroll. Por eso el **build de desarrollo** pide `site@android` como observación
-(`OBSERVED_TYPES` en el worker): sale en la línea `backups:` y en los registros, **nunca se le sirve al player**, y
-la release no lo lleva. En el próximo corte de varios pods, si sale `site@android=clean@1080p60` con los cinco web
-en `ads`, se promociona por delante de `autoplay`; si cae con ellos, la inmunidad es del tipo `autoplay`. **Y el primer PREROLL de carga** (trackingthepros, 24, 51 s): toda sesión que
+rebase +1444). **No tiene arreglo, y esto quedó cerrado el 2026-10-24: no hace falta volver a mirarlo.** Con
+`test/twitch-ladders.mjs` se vio que el techo de 360p es del **tipo de player** y no de la plataforma (`autoplay` y
+`picture-by-picture` capados en web, android e ios por igual; los cinco tipos principales con la escalera entera en
+las tres), así que `site` en android parecía la salida. No lo es: pedido junto a los demás durante dos cortes reales
+volvió `ads@1080p60` en **32 de 34 rondas** mientras `autoplay` estaba limpio en las 34. **El techo de 360p y la
+inmunidad al pod son la misma propiedad de los tipos de vista previa.** Lo que decide no es la plataforma: un token
+creado mientras hay un anuncio en marcha se une a él. Por eso los cortes con tokens ya calientes salen impecables y
+los que obligan a crear sesiones durante el anuncio (una carga de página, o un pod que contamina lo que había) acaban
+en `autoplay` a 360p, y en una carga no hay nada caliente por definición. **Y el primer PREROLL de carga** (trackingthepros, 24, 51 s): toda sesión que
 empieza durante el pod nace dentro de él, así que los cinco tokens web vuelven con anuncio y solo `autoplay@360p`
 está limpio los primeros 31 s, hasta que `site` vuelve a 1080p60; el player arrancaba en 360p por su cuenta y no se
 notó, pero `autoplay` no pasa de 360p y el `held` no cubre un arranque en frío. Al acabar, la página devuelve su

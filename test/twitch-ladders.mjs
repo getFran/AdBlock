@@ -9,10 +9,14 @@
 //   ladders (any time):  is the 360p ceiling a property of the player type or of `platform: android`?
 //                        ANSWERED 2026-10-24: the type. autoplay and picture-by-picture are capped at 360p30 on web,
 //                        android and ios alike, and the five main types give the full ladder on all three.
-//   immunity (--watch):  does a main type on another platform ALSO stay out of the pod, the way autoplay does?
-//                        A token requested while a pod runs joins it (2026-10-23), so the combinations have to be
-//                        asked for at the same instant or the comparison is just "the break ended". Hence Promise.all
-//                        per poll, and a watch loop, because a stitched break cannot be provoked.
+//   immunity:            does a main type on another platform ALSO stay out of the pod, the way autoplay does?
+//                        ANSWERED 2026-10-24: no, and this probe cannot answer it, which is the point. Every token
+//                        opens a session and a new session can be served a preroll of its own, so the only token
+//                        carrying an ad here was whichever was created first. The measurement was made inside the
+//                        extension instead, asking for `site@android` next to the others during two real breaks:
+//                        ads@1080p60 in 32 of 34 rounds while autoplay was clean in all 34. The 360p ceiling and
+//                        the immunity are the same property of the preview player types, so no token is both clean
+//                        and full quality. A token created while an ad runs joins it unless it is a preview type.
 //
 // No browser and no extension: PlaybackAccessToken answers anonymously with the public Client-ID, same as the probe
 // of 2026-10-15.

@@ -58,20 +58,14 @@
   // F-09, this project's order: the types that gave the player's quality in the probe of 2026-10-15 first
   const BACKUP_TYPES = ['site', 'popout', 'frontpage', 'mobile_web', 'embed'];
   const LOW_QUALITY_TYPE = 'autoplay'; // 360p, requested with platform android; never pinned
-  // Observation only, and only in the development build. `autoplay` is the one backup that keeps coming back clean
-  // while every web token is inside the pod, and it costs the viewer 360p30: ~31 s of a preroll (2026-10-24) and up
-  // to 40 s of a multi-pod midroll (2026-10-23). test/twitch-ladders.mjs settled half the question on 2026-10-24: the
-  // 360p ceiling belongs to the PREVIEW PLAYER TYPES, not to the platform (autoplay and picture-by-picture are capped
-  // on web, android and ios alike, and the five main types give the full ladder on all three). So `site` on android
-  // has both the full ladder and an untested chance of being outside the pod. An outside probe cannot tell, because
-  // every new session can be served a preroll of its own and the comparison turns into "the break ended": the only
-  // honest measurement is inside a real pod, next to the types we already ask for. Hence this, asked for with the
-  // others and reported in the `backups:` line, but NEVER served to the player. Promote it only if the records show
-  // it clean while the web pool is contaminated. Type ids carry their platform after an @.
-  // the define is inlined here, not read through RELEASE, so esbuild folds the ternary and the release carries no trace of it
-  const OBSERVED_TYPES = (typeof __RELEASE__ !== 'undefined' && __RELEASE__) ? [] : ['site@android'];
-  const playerTypeOf = (type) => type.split('@')[0];
-  const platformOf = (type) => (type.includes('@') ? type.split('@')[1] : type === LOW_QUALITY_TYPE ? 'android' : 'web');
+  // ANSWERED on 2026-10-24, do not re-litigate: the 360p ceiling AND the immunity to an ad pod both belong to the
+  // preview player types, so no token is ever both clean and full quality. test/twitch-ladders.mjs showed autoplay
+  // and picture-by-picture capped at 360p30 on web, android and ios alike while the five main types give the full
+  // ladder on all three, which looked like `site` on android might be the way out. It is not: asked for alongside
+  // the others during two real breaks (a preroll on trackingthepros and a midroll caught on page load), it came back
+  // `ads@1080p60` in 32 of 34 rounds, the other 2 being rounds where the whole web pool was still clean, while
+  // autoplay was clean in all 34. A token created while an ad is running joins it unless it is a preview type.
+  const platformOf = (type) => (type === LOW_QUALITY_TYPE ? 'android' : 'web');
   // F-10 had 5 s for a type whose backup had ads; with five web types that each come back with ads within seconds of a
   // fresh token, 5 s left the pool empty 5 times in one 84 s break (esportmaniacos, 2026-10-16) and the player went to
   // 360p each time. A fresh token is ready in 0.3 s: 2 s is enough to let it answer
@@ -787,7 +781,7 @@
     const channel = state.channel;
     const started = Date.now();
     try {
-      const access = await playbackAccessToken(channel, playerTypeOf(type), platformOf(type));
+      const access = await playbackAccessToken(channel, type, platformOf(type));
       const master = await (await request(usherUrl(channel, access, state.usherUrl))).text();
       const variants = parseVariants(master);
       if (channel !== state.channel) return; // the player moved to another channel meanwhile
@@ -821,7 +815,7 @@
   function backupPlayerTypes() {
     const pinned = state.pinnedType && BACKUP_TYPES.includes(state.pinnedType) ? state.pinnedType : null;
     const ordered = pinned ? [pinned, ...BACKUP_TYPES.filter((type) => type !== pinned)] : BACKUP_TYPES.slice();
-    return [...ordered, LOW_QUALITY_TYPE, ...OBSERVED_TYPES];
+    return [...ordered, LOW_QUALITY_TYPE];
   }
 
   // F-11: the variant of the player's master the polled playlist belongs to, else the quality name
@@ -1083,7 +1077,6 @@
       for (const backup of backups) noteBackup(backup, dump);
       log('backups: ' + backups.map((x) => x.type + '=' + x.verdict + (x.variant ? '@' + x.variant.name : '') + (x.detail ? '(' + x.detail + ')' : '')).join('  '));
       for (const backup of backups) {
-        if (OBSERVED_TYPES.includes(backup.type)) continue; // observation only: reported in the line above, never served
         if (backup.type === LOW_QUALITY_TYPE) {
           if (backup.data && !low) low = backup;
           continue;
