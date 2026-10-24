@@ -269,7 +269,12 @@ bajado a mano), cierra la otra duda: los masters de los backups ofrecían `1080p
 sirvió `site@720p60` y `popout@720p60` los 30 polls, 0 `offQuality`, las 77 muestras a 1280 px sin parones. La cadena
 empareja la calidad del player, no coge la mejor. **Dos más esa tarde lo rematan**: otro a 720p60 (11:45, 27/27) y
 **el de 480p** (12:36, 52 s, 31/31 `swapped` a 480p con shift +5 constante, 0 `held`, 0 `offQuality`, las 77 muestras
-a 852 px y 30 fps, sin reinicio ni parones). El emparejamiento de calidad queda probado en los tres escalones. **Y el primer PREROLL de carga** (trackingthepros, 24, 51 s): toda sesión que
+a 852 px y 30 fps, sin reinicio ni parones). El emparejamiento de calidad queda probado en los tres escalones. **Y el preroll con el player
+ya en 1080p60** (12:52, jaimemellado_, 39 s) mide lo que cuesta el techo de `autoplay`: los cinco tokens web nacen
+con el anuncio cosido, solo `autoplay@360p30` está limpio, y el espectador ve **~31 s de los 39 a 360p y 30 fps**
+antes de que `site` vuelva limpio a 1080p60, eso sí sin parón, sin reinicio y sin UI de anuncio (20/20 `swapped`,
+rebase +1444). No tiene arreglo con la cadena actual: el `held` no cubre un arranque en frío y el techo de 360p sale
+de pedir `autoplay` con `platform: android`, que es seguramente lo mismo que lo mantiene fuera del pod. **Y el primer PREROLL de carga** (trackingthepros, 24, 51 s): toda sesión que
 empieza durante el pod nace dentro de él, así que los cinco tokens web vuelven con anuncio y solo `autoplay@360p`
 está limpio los primeros 31 s, hasta que `site` vuelve a 1080p60; el player arrancaba en 360p por su cuenta y no se
 notó, pero `autoplay` no pasa de 360p y el `held` no cubre un arranque en frío. Al acabar, la página devuelve su
