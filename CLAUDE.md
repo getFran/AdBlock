@@ -216,6 +216,7 @@ build.mjs        lee build.config.mjs y escribe dist/:
 | `npm run records -- [--since=YYYY-MM-DD] [--verbose]` | `test/twitch-records.mjs`: resume cada corte de los registros de `Descargas\AdBlock\` (cadena de backups, `held`/`merged`/`blanked`, reinicios, `pageRebased`, y sobre las muestras: parones de reloj o de imagen, anchura, UI de anuncio). Cada registro lleva todos los cortes de su pestaña pero solo 300 s de muestras: cada corte se lee del primer registro que lo contiene. Es lo primero que se lanza cuando Fran trae registros nuevos |
 | `npm run smoke` | carga `dist/` en el Chromium de Playwright y comprueba manifest, permisos, content scripts, alarma y globales (vale para los dos builds; `ADBLOCK_DIST=<carpeta>` prueba un zip descomprimido) |
 | `npm run probe -- [--twitch=<canal>] [--seconds=90] [--pip] [--navigate] [--race]` | abre un directo con el build de `dist/` (o `ADBLOCK_DIST`) y dice si el hook del worker está activo **sin depender de los globales** (los masters de usher: los tokens de respaldo solo se piden si nuestro worker corre), si el vídeo avanza y si sale la UI de anuncio; `--pip` y `--navigate` ejercitan el picture-in-picture y el mini-player. Es la única forma de probar la release en Twitch |
+| `node test/twitch-ladders.mjs [--twitch=<canal>]` | qué escalera de calidad da cada `player_type` x `platform`, pidiendo un token de cada uno a la vez (sin navegador: PlaybackAccessToken contesta anónimo). Contestó el 2026-10-24 que el techo de 360p es del tipo de player, no de la plataforma. `--watch=<s>` mantiene una sesión abierta y, al empezar un corte, pide todas las combinaciones a la vez; ojo que una sesión nueva puede recibir su propio preroll y confundir la lectura |
 | `npm run vendor` | refresca `vendor/uassets-quick-fixes.txt` (GitHub) y `vendor/adguard-base-youtube.txt` (las reglas de YouTube de la lista Base viva de AdGuard); commitéalos |
 | `npm run verify -- generic\|youtube\|twitch\|all` | carga `dist/` en un Chromium con Playwright y comprueba en páginas reales (`generic` incluye el interruptor por sitio sobre umami.getfran.dev; `youtube` comprueba las reglas anti-popup, los selectores del snackbar y que el registro llega a `Descargas\AdBlock\`) |
 | `npm run verify -- twitch --seconds=900 --twitch=<canal>[,<canal>...]` | vigila cada canal hasta 900 s y para 30 s después del primer corte cosido completo; imprime por corte backups usados, URIs de anuncio en la red, parón más largo, UI de anuncio y si el vídeo sigue tras el corte |
@@ -273,8 +274,15 @@ a 852 px y 30 fps, sin reinicio ni parones). El emparejamiento de calidad queda 
 ya en 1080p60** (12:52, jaimemellado_, 39 s) mide lo que cuesta el techo de `autoplay`: los cinco tokens web nacen
 con el anuncio cosido, solo `autoplay@360p30` está limpio, y el espectador ve **~31 s de los 39 a 360p y 30 fps**
 antes de que `site` vuelva limpio a 1080p60, eso sí sin parón, sin reinicio y sin UI de anuncio (20/20 `swapped`,
-rebase +1444). No tiene arreglo con la cadena actual: el `held` no cubre un arranque en frío y el techo de 360p sale
-de pedir `autoplay` con `platform: android`, que es seguramente lo mismo que lo mantiene fuera del pod. **Y el primer PREROLL de carga** (trackingthepros, 24, 51 s): toda sesión que
+rebase +1444). No tiene arreglo inmediato: el `held` no cubre un arranque en frío. **Sondeado ese mismo día**
+(`test/twitch-ladders.mjs`): el techo de 360p es del **tipo de player**, no de la plataforma, porque `autoplay` y
+`picture-by-picture` están capados en web, android e ios por igual mientras los cinco tipos principales dan la
+escalera entera en las tres. Así que `site` en android sí tendría 1080p60, y lo único sin medir es si **también**
+se queda fuera del pod. Desde fuera no se puede medir: cada token nuevo abre una sesión y a una sesión nueva Twitch
+le puede servir su propio preroll. Por eso el **build de desarrollo** pide `site@android` como observación
+(`OBSERVED_TYPES` en el worker): sale en la línea `backups:` y en los registros, **nunca se le sirve al player**, y
+la release no lo lleva. En el próximo corte de varios pods, si sale `site@android=clean@1080p60` con los cinco web
+en `ads`, se promociona por delante de `autoplay`; si cae con ellos, la inmunidad es del tipo `autoplay`. **Y el primer PREROLL de carga** (trackingthepros, 24, 51 s): toda sesión que
 empieza durante el pod nace dentro de él, así que los cinco tokens web vuelven con anuncio y solo `autoplay@360p`
 está limpio los primeros 31 s, hasta que `site` vuelve a 1080p60; el player arrancaba en 360p por su cuenta y no se
 notó, pero `autoplay` no pasa de 360p y el `held` no cubre un arranque en frío. Al acabar, la página devuelve su
