@@ -36,7 +36,10 @@
 //     again if it is under 3 s old (one poll without new segments beats a resolution switch: the picture froze on
 //     2026-10-16 in a break that went 1080p60 <-> 360p five times), else autoplay at 360p;
 //   - with none of those, the page's playlist with each ad segment replaced by the backup segment at the same
-//     date-time, and the ones left listed as they are but answered with the blank segment when the player asks.
+//     date-time, and the ones left listed as they are but answered with the blank segment when the player asks;
+//   - and a poll with ad segments while no backup master is stored yet (the first playlist of a channel load, the
+//     tokens of the load still in flight) waits up to 2.5 s for the first master before any of the above
+//     (2026-10-25: three blank segments to a player that had not started yet left 38 s of black screen).
 // Diagnostics: console under [AdBlock/twitch:worker], and window.__adblockTwitch on the page (events, breaks, log).
 
 (function (scope) {
@@ -73,6 +76,7 @@
   const HOLD_MS = 3000; // a same-quality backup playlist this fresh is given again rather than dropping to 360p or restarting the player for backups one number behind
   const BLANK_TTL_MS = 120000; // F-14: an ad URI is answered blank this long after the last poll that listed it
   const PREWARM_MS = 60000; // F-19: at most one prewarm per this many ms
+  const FIRST_BACKUP_WAIT_MS = 2500; // a break with no backup master stored yet waits this long for the tokens in flight (2026-10-25)
   const RECOVERING_MS = 10000; // ad-break.ts: clean polls this long after a break bring the state back to idle
   const PAGE_GQL_TIMEOUT_MS = 5000;
   const MAIN_SOURCE = 'page';
@@ -809,6 +813,28 @@
     emit('backupsPrewarmed', { reason, types });
   }
 
+  // 2026-10-25, jaimemellado_: the first playlist of a channel change came with a preroll 800 ms after the master and
+  // 335 ms before any backup master, so the chain had nothing to serve and the page's playlist went out with its three
+  // segments blank; the new player never started nor polled again and the screen stayed black 38 s until the channel
+  // was changed. With no backup master stored and tokens in flight (the prewarm of the load), a poll with ad segments
+  // waits for the first master to arrive, at most maxMs. Resolves with the wait in ms, null when there was no wait
+  function awaitBackupMasters(maxMs) {
+    if (state.backups.size || !state.pendingAccess.size) return Promise.resolve(null);
+    const started = Date.now();
+    const pending = [...state.pendingAccess.values()];
+    return new Promise((resolve) => {
+      let left = pending.length;
+      const timer = setTimeout(() => resolve(Date.now() - started), maxMs);
+      const settled = () => {
+        left--;
+        if (!state.backups.size && left > 0) return;
+        clearTimeout(timer);
+        resolve(Date.now() - started);
+      };
+      for (const p of pending) p.then(settled, settled);
+    });
+  }
+
   // --- the player (player.ts) --------------------------------------------------------------------------
 
   // F-09 + F-10: the pinned type first, autoplay last
@@ -1061,6 +1087,12 @@
     if (b) b.polls++;
     emit('adDetected', { adSegments: summary.adSegments, segments: summary.segments });
 
+    const waited = await awaitBackupMasters(FIRST_BACKUP_WAIT_MS);
+    if (waited != null) {
+      log('no backup master yet: waited ' + waited + ' ms for the tokens in flight, ' + state.backups.size + ' master(s) ready');
+      emit('backupsAwaited', { ms: waited, masters: state.backups.size });
+    }
+
     // F-09, F-10, F-25, F-26: the first type alone, then the rest at once, in order; a clean backup that lists nothing
     // past the player's newest number waits for the types after it. autoplay (360p) waits for everything of the
     // player's quality: a clean web type, an announced one with its announcement stripped, the last delivery held
@@ -1264,7 +1296,7 @@
   };
 
   // the pure pieces, for test/twitch-playlists.mjs
-  if (!RELEASE) scope.__adblockTwitchWorker = { detectAds, readSegments, isCleanBackup, mergeWithBackups, blankAds, stripAdDateranges, newestNumber, sequenceReference, sequenceShift, shiftSequence, pageRebase, parseVariants, pickVariant, summarize };
+  if (!RELEASE) scope.__adblockTwitchWorker = { detectAds, readSegments, isCleanBackup, mergeWithBackups, blankAds, stripAdDateranges, newestNumber, sequenceReference, sequenceShift, shiftSequence, pageRebase, parseVariants, pickVariant, summarize, awaitBackupMasters, state };
 
   log('worker hook installed');
 })(self);

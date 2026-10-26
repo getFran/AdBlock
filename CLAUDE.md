@@ -75,7 +75,12 @@ alcance (carcasa que consume piezas mantenidas por otros), no con otro.
   defaults de Purple del 2026-10-10. No portado: `forcePopoutToken`, `reloadAfterAd`, la whitelist.
 - **Registro automático para revisar un anuncio a posteriori** (2026-10-15, noche). Fran no copia nada
   de la consola: `page.js` muestrea cada segundo el vídeo y la UI de anuncio de Twitch y, 20 s después
-  de acabar un corte cosido, cuando esa UI lleva 3 s visible, o a mano (`window.__adblockTwitch.save()`),
+  de acabar un corte cosido **solo si no fue limpio** (`breakFlaws`, desde el 2026-10-26: preroll, `held`, merge o
+  blanco, backup fuera de la calidad del player, player que dejó de pedir playlist, reinicio, UI de anuncio, error
+  de media, reloj o imagen parados sin pausa, o vídeo sin imagen 6 s; hasta entonces caía uno por cada corte,
+  también limpio, y con un centenar de cortes limpios ya demostrados a Fran le resultaba tedioso: ahora un fichero
+  en la carpeta significa que hay algo que leer, y lo único que tiene que hacer es decir la hora), cuando esa UI
+  lleva 3 s visible, o a mano (`window.__adblockTwitch.save()`),
   construye un JSON (muestras, eventos, log, estado del worker y sus últimas 80 playlists: las del
   player, las de los backups y lo entregado) y lo manda por `bridge.js` (mundo aislado, el único
   con `chrome.runtime` en twitch.tv y en YouTube) al service worker, que lo escribe con `chrome.downloads` (permiso
@@ -264,8 +269,8 @@ volvieron con anuncio a la vez** (un token pedido con el pod en marcha se une a 
 que ya estaban lo reciben igual): una vez lo cubrió el `held`, y dos veces agotó sus 3 s y el player vio `autoplay`
 360p durante 6 s y 40 s, con 1 s de buffering al cambiar, sin reinicio, sin parón y sin UI de anuncio. Es el último
 recurso por diseño (contenido a 360p antes que pantalla en negro): en ese tramo no existe sesión a 1080p sin
-anuncio, el worker lo comprobó pidiendo los cinco tokens cada 3-4 s. Un registro cae en `Descargas\AdBlock\` tras
-**cada** corte, también cuando va bien. **Quince más en ibai** del 23 por la tarde al 24 de madrugada (1080p60, 1.0.2,
+anuncio, el worker lo comprobó pidiendo los cinco tokens cada 3-4 s. Hasta el 26, un registro caía en `Descargas\AdBlock\`
+tras **cada** corte, también cuando iba bien; desde el 26 solo si el corte no fue limpio. **Quince más en ibai** del 23 por la tarde al 24 de madrugada (1080p60, 1.0.2,
 siete horas seguidas): el lote más limpio hasta hoy, todos los polls intercambiados a 1080p60, sin `held`, sin
 `offQuality`, sin reinicios y sin parones, con solo 1-5 cambios de fuente por corte. **Seis más en champi14 el 24**,
 todos limpios, con los de 3 y 6 pods limpios del todo: que el segundo pod cosa el anuncio en los cinco tokens web a
@@ -294,7 +299,16 @@ playlist numerada en **27** mientras el player sostiene **15537** (la página nu
 el principio de la emisión, mismo `PROGRAM-DATE-TIME`) y el `pageRebase` la renumera **+15510** sin reinicio: el
 rebase del 22 no era un apaño para caedrel247, es lo que hace que un preroll funcione. El `PlayerError
 MasterPlaylist "not a valid M3U8"` de cada corte es el master `picture-by-picture` respondido vacío a propósito, lo
-acusa el mini player y no el principal.
+acusa el mini player y no el principal. **Y el preroll con pantalla en negro** (25, jaimemellado_, 16:09Z, al cambiar de
+canal; es el único corte en negro de los ~100 del 24 al 26): la primera playlist del player llegó 800 ms después del
+master y 335 ms **antes** que cualquier master de respaldo, así que la cadena no tenía nada y entregó la playlist de la
+página con sus tres segmentos en blanco; el player recién creado no arrancó ni volvió a pedir playlist (en pausa, sin
+imagen, `polls=1` en 39 s) y el guardián no toca un vídeo en pausa, porque eso es lo que hace Fran a mano: 38 s en
+negro hasta que cambió de canal y volvió. Desde el 26, un poll con anuncio sin ningún master de respaldo almacenado
+espera hasta 2,5 s a los tokens en vuelo (`awaitBackupMasters`; sale `no backup master yet: waited N ms` en el log del
+worker) antes de decidir, y ese preroll habría ido por el camino normal (`autoplay` 360p y luego `site`). **Queda por
+ver en un preroll real**: el registro de un preroll se escribe siempre (es un `breakFlaws`), así que la prueba es el
+siguiente fichero `twitch-*-break.json` con `PREROLL` que caiga.
 
 **Al limpiar navegadores de prueba colgados, nunca `taskkill //IM chrome.exe`:** mata el Chrome de
 Fran (memoria `no-matar-chrome-por-nombre-de-imagen` en `PyCharm Projects`).

@@ -184,4 +184,34 @@ check('summarize reports the roll type and the ad segment count for the logs', (
   assert.equal(s.mediaSequence, 100);
 });
 
+// the wait for the tokens in flight when a break finds no backup master (2026-10-25, the preroll at a channel change
+// that left 38 s of black screen): it ends with the first master, or when every token settled, or at the cap
+{
+  const S = W.state;
+  const later = (ms, fn) => new Promise((resolve) => setTimeout(() => resolve(fn && fn()), ms));
+  S.backups.clear();
+  S.pendingAccess.clear();
+  assert.equal(await W.awaitBackupMasters(500), null, 'nothing in flight: no wait');
+  S.backups.set('site', { variants: [] });
+  S.pendingAccess.set('popout', new Promise(() => {}));
+  assert.equal(await W.awaitBackupMasters(500), null, 'a master already stored: no wait');
+  S.backups.clear();
+  S.pendingAccess.clear();
+  S.pendingAccess.set('site', later(120, () => S.backups.set('site', { variants: [] })));
+  S.pendingAccess.set('popout', new Promise(() => {}));
+  const first = await W.awaitBackupMasters(2500);
+  assert.ok(first >= 100 && first < 1000, 'woke up with the first master, not at the cap: ' + first + ' ms');
+  S.backups.clear();
+  S.pendingAccess.clear();
+  S.pendingAccess.set('site', later(60));
+  const failed = await W.awaitBackupMasters(2500);
+  assert.ok(failed >= 50 && failed < 1000, 'every token settled without a master: no more waiting: ' + failed + ' ms');
+  S.pendingAccess.set('site', new Promise(() => {}));
+  const capped = await W.awaitBackupMasters(150);
+  assert.ok(capped >= 140 && capped < 1000, 'capped by the timeout: ' + capped + ' ms');
+  S.pendingAccess.clear();
+  checks++;
+  console.log('ok  the wait for the tokens in flight ends with the first master, with every token settled, or at the cap');
+}
+
 console.log(checks + ' checks passed');

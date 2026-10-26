@@ -326,8 +326,10 @@ const AD_UI_SELECTORS = ['[data-a-target="video-ad-label"]', '[data-a-target="vi
   }
 
   // --- the record: what a session reads when an ad got through ---------------------------------------------
-  // One sample per second of the main video and of Twitch's ad UI; a record when a stitched break ended (20 s later,
-  // with what the player did after it), when the ad UI stays visible, or by hand (window.__adblockTwitch.save()).
+  // One sample per second of the main video and of Twitch's ad UI; a record 20 s after a stitched break ended, with
+  // what the player did after it, but only when the break was not clean (breakFlaws below: about a hundred clean
+  // breaks from 2026-10-16 to 26 made one file each, and from then on a file in Downloads/AdBlock/ means there is
+  // something to read), when the ad UI stays visible, or by hand (window.__adblockTwitch.save()).
   // It goes to Downloads/AdBlock/<name>.json through twitch-bridge.js and the service worker.
   let adUiRun = 0;
   // frames: decoded video frames so far (getVideoPlaybackQuality). A clock that runs while frames stop is a picture
@@ -364,6 +366,51 @@ const AD_UI_SELECTORS = ['[data-a-target="video-ad-label"]', '[data-a-target="vi
     } catch {
       // never from a timer
     }
+  }
+
+  // What makes the record of a break worth writing: a preroll (the case still being watched), a held, merged or blanked
+  // poll, a backup off the player's quality, a player that stopped polling, a restart by the guard, and in the samples
+  // since the break began while the tab was visible: the ad UI, a media error, the clock or the picture still while
+  // not paused, or no picture at all (videoWidth 0: 2026-10-25, jaimemellado_, a preroll at a channel change left the
+  // new player paused and black 38 s, which the guard ignores because paused is what the viewer does by hand)
+  function breakFlaws(info) {
+    const why = [];
+    if (!info) return why;
+    if (info.rollType === 'PREROLL') why.push('preroll');
+    if (info.held) why.push('held ' + info.held);
+    if (info.merged) why.push('merged ' + info.merged);
+    if (info.blanked) why.push('blanked ' + info.blanked);
+    const off = (info.backups || []).filter((x) => x.quality !== info.quality).length;
+    if (off) why.push(off + ' off quality');
+    if (info.polls < 2 && info.durationMs > 10000) why.push(info.polls + ' poll(s) in ' + Math.round(info.durationMs / 1000) + ' s');
+    if (state.restarts.some((r) => r.at >= info.at)) why.push('restart');
+    const limit = STALL_MS / 1000;
+    const longest = { still: 0, dark: 0 };
+    let run = { still: 0, dark: 0 };
+    let adUi = 0;
+    let err = 0;
+    let last = null;
+    for (const s of state.samples) {
+      if (s.at < info.at || !s.vis) {
+        last = null;
+        run = { still: 0, dark: 0 };
+        continue;
+      }
+      if (s.adUi.length) adUi++;
+      if (s.err) err++;
+      const playing = last && !s.paused && !last.paused;
+      const still = playing && (s.t === last.t || (s.frames != null && s.frames === last.frames));
+      run.dark = s.w === 0 ? run.dark + 1 : 0;
+      run.still = still ? run.still + 1 : 0;
+      longest.dark = Math.max(longest.dark, run.dark);
+      longest.still = Math.max(longest.still, run.still);
+      last = s;
+    }
+    if (adUi) why.push('ad UI ' + adUi + ' s');
+    if (err) why.push('media error');
+    if (longest.still >= limit) why.push('still ' + longest.still + ' s');
+    if (longest.dark >= limit) why.push('no picture ' + longest.dark + ' s');
+    return why;
   }
 
   let lastSave = -Infinity;
@@ -484,7 +531,20 @@ const AD_UI_SELECTORS = ['[data-a-target="video-ad-label"]', '[data-a-target="vi
         if (!__RELEASE__) state.breakEnds.push(data.info);
         if (guard) guard.endedAt = Date.now();
         else guardBreak(worker, data.info);
-        if (!__RELEASE__) setTimeout(() => save('break'), SAVE_AFTER_BREAK_MS);
+        if (!__RELEASE__) {
+          const info = data.info;
+          setTimeout(() => {
+            const why = breakFlaws(info);
+            const seconds = Math.round(((info && info.durationMs) || 0) / 1000);
+            if (!why.length) {
+              log('break of ' + seconds + ' s clean: no record');
+              return;
+            }
+            log('break of ' + seconds + ' s not clean (' + why.join(', ') + '): record');
+            emit('breakFlaws', { why });
+            save('break');
+          }, SAVE_AFTER_BREAK_MS);
+        }
         break;
       case 'dump': {
         if (__RELEASE__) break;

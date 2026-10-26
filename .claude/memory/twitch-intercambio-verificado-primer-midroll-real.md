@@ -289,15 +289,24 @@ dejan de crecer con `t` avanzando, es el mismo fallo; `restarts[]` dirá si el g
 player, y un `sequenceRestart` precedido de `backupBehind` es el reinicio por backups atrasados (con el hold del 18
 debería salir `backupHeld` en su lugar). Si vuelve a congelarse sin caídas a 360p, la siguiente hipótesis es el salto entre tokens (cada
 2-4 s una playlist de otro token con URLs distintas para los mismos números): no cambiar de fuente más
-de una vez por N s. Un registro se descarga tras **cada** corte cosido aunque todo vaya bien: que haya
-fichero no significa fallo, significa que hubo corte. Con un lote nuevo de registros, lo primero es
+de una vez por N s. Hasta el 2026-10-26 un registro se descargaba tras **cada** corte cosido aunque todo fuera
+bien; desde entonces solo si el corte no fue limpio (`breakFlaws` en `page.js`: preroll, `held`, merge o blanco,
+backup fuera de calidad, player que dejó de pedir playlist, reinicio, UI de anuncio, parón sin pausa o vídeo sin
+imagen 6 s): que haya fichero significa que hay algo que leer. Con un lote nuevo de registros, lo primero es
 `npm run records -- --since=<fecha>`: un corte limpio es `swapped` = `polls`, `offQuality` 0, `clockStill` y
 `pictureStill` 0, `adUi` 0 y sin `RESTART` ni `sequenceRestart`; un `sequenceRestart` justo en `endedAt`
 (`… -> page`) es el caso de caedrel247 y desde el 22 debería salir `pageRebased` en su lugar, con `t` siguiendo
 sin volver a 0. Un `offQuality` > 0 con `held` 3 justo antes y, en el log del worker, `site=ads … embed=ads` ronda
 tras ronda es el segundo pod del 23: Twitch cosiendo el anuncio en todos los tokens web; la cadena hizo lo previsto
 y solo tendría sentido tocar algo si Fran prefiere negro a 1080p antes que 360p. El PREROLL de carga ya se vio (2026-10-24, arriba); los cortes a 720p60 y 480p también, y el preroll con el player
-en 1080p60 igual (24, arriba): la lista de casos por ver se ha quedado vacía. Lo siguiente que daría información
-nueva es un PREROLL en un canal recién arrancado (rebase pequeño) o la sonda de `autoplay` con otra plataforma. Relacionado:
+en 1080p60 igual (24, arriba). **El 25 (jaimemellado_, 16:09Z) un preroll al cambiar de canal dejó 38 s en negro**: la
+primera playlist llegó 335 ms antes que cualquier master de respaldo, el worker entregó la de la página con sus tres
+segmentos en blanco, y el player recién creado se quedó en pausa sin imagen y sin volver a pedir playlist (`polls=1`
+en 39 s); el guardián no actúa sobre un vídeo en pausa. Desde el 26 el worker espera hasta 2,5 s a los tokens en vuelo
+(`awaitBackupMasters`, línea `no backup master yet: waited N ms`) cuando un corte llega sin ningún master de respaldo.
+Lo siguiente que daría información nueva es un PREROLL real con ese cambio: debe arrancar en `autoplay` 360p en vez
+de quedarse en negro, y su registro cae siempre. Si vuelve a quedarse en negro con los masters ya llegados, el
+sospechoso pasa a ser la playlist 100 % en blanco a un player sin arrancar, y la salida sería no entregarla nunca a un
+player que aún no ha recibido nada. Relacionado:
 [[twitch-sonda-corte-cosido-real-y-los-siete-backups-limpios]] (la sonda que lo decidió),
 [[twitch-ningun-player-type-garantiza-stream-sin-anuncios]].
