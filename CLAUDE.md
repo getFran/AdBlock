@@ -226,6 +226,9 @@ build.mjs        lee build.config.mjs y escribe dist/:
 **Actualizar las listas** = `npm install @adguard/dnr-rulesets@latest @adguard/scriptlets@latest`,
 `npm run vendor`, `npm run build`, recargar en `chrome://extensions`. **La Action lo hace sola los lunes** y publica
 release si algo cambió (commit de `github-actions[bot]` en `main`: hay que hacer `git pull` antes de tocar nada).
+**En este PC va el build de desarrollo cargado desde `dist/`, no el zip**: cuando a Fran le salga el badge `NEW` aquí
+(la primera vez, la 1.0.3 del lunes 2026-10-26), lo que toca es `git pull && npm run build` y recargar en
+`chrome://extensions`, nunca descargar la release, que no lleva registros ni diagnóstico.
 Para publicar a mano una versión: subir `version` en `package.json`, commit, y `node scripts/publish.mjs <PAT>`
 (idempotente: hace público el repo si aún no lo es, crea y empuja el tag, espera la Action y enseña la release; el
 token va por argumento, nunca en el repo). **El clasificador de auto mode deniega hacer público el repo y empujar
