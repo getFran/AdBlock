@@ -308,18 +308,21 @@ negro hasta que cambió de canal y volvió. Desde el 26, un poll con anuncio sin
 espera hasta 2,5 s a los tokens en vuelo (`awaitBackupMasters`; sale `no backup master yet: waited N ms` en el log del
 worker) antes de decidir, y ese preroll habría ido por el camino normal (`autoplay` 360p y luego `site`). **Queda por
 ver en un preroll real**: el registro de un preroll se escribe siempre (es un `breakFlaws`), así que la prueba es el
-siguiente fichero `twitch-*-break.json` con `PREROLL` que caiga. **Tres midrolls más el 30 en esportmaniacos**
-(1080p60, 1.0.3), que es el canal del desastre del 16: 62 s, 96 s y 59 s, los tres intercambiados a 1080p60 con
-**0 `offQuality`, 0 reinicios, 0 UI de anuncio y 0 merges o blancos**. Los dos de varios pods enseñan el `held`
-haciendo justo su trabajo: en el de pod=3 un `held` de 1,6 s no le costó nada al espectador, y en el de pod=2 los
-**cinco tokens web se contaminaron a la vez** (`site`/`popout`/`frontpage`/`mobile_web` en la misma ronda, solo
-`embed` limpio un poll más), dos `held` de 0,9 s y 1,8 s cubrieron los 2,2 s hasta que `site` volvió limpio y el
-player **nunca vio `autoplay` 360p**. El precio fue que el propio player de Twitch se puso **en pausa 4,0 s**
-(`playerState` Buffering 15:25:32 → Playing 15:25:36, `t` clavado en 3460, los fotogramas quietos, el elemento
-siempre a 1920 px): no lo hizo nuestro código (`restarts` vacío) y el guardián no actúa sobre un vídeo en pausa.
-**`npm run records` no lo cuenta como parón** — `clockStill` y `pictureStill` salen 0 porque estaba en pausa, y lo
-que lo delata es el campo `paused=4` de las muestras. Cuatro segundos congelado a 1080p60 es lo que cuesta no bajar
-a 360p, que es el revés del lote del 23; por debajo de los 6 s del guardián y sin tocar nada.
+siguiente fichero `twitch-*-break.json` con `PREROLL` que caiga. **Cuatro midrolls más el 30 en esportmaniacos**
+(1080p60, 1.0.3), que es el canal del desastre del 16: 62, 96, 59 y 130 s, los cuatro intercambiados a 1080p60 con
+**0 `offQuality`, 0 reinicios, 0 UI de anuncio y 0 merges o blancos**. Tres llevaron `held` y solo uno se notó, y eso
+es lo que los separa: con un `held` suelto (1,6 s en el de pod=3, 1,45 s en el de 130 s) el espectador no vio nada,
+mientras que en el de pod=2 los **cinco tokens web se contaminaron en la misma ronda**
+(`site`/`popout`/`frontpage`/`mobile_web` a la vez, solo `embed` limpio un poll más) y, aunque dos `held` de 0,9 s y
+1,8 s cubrieron los 2,2 s hasta que `site` volvió limpio y el player **nunca vio `autoplay` 360p**, el propio player
+de Twitch se puso **en pausa 4,0 s** (`playerState` Buffering 15:25:32 → Playing 15:25:36, `t` clavado en 3460, los
+fotogramas quietos, el elemento siempre a 1920 px): no lo hizo nuestro código (`restarts` vacío) y el guardián no
+actúa sobre un vídeo en pausa. **`npm run records` no lo cuenta como parón** — `clockStill` y `pictureStill` salen 0
+porque estaba en pausa, y lo que lo delata es el campo `paused=4` de las muestras. Cuatro segundos congelado a
+1080p60 es lo que cuesta no bajar a 360p, que es el revés del lote del 23; por debajo de los 6 s del guardián y sin
+tocar nada. **El de 130 s es además el más largo del día y el más limpio**: el anuncio cosido solo duró 51 s y el
+resto es la cola `MARKED_LIVE` del anuncio client-side, que se corta por red (26 peticiones a `edge.ads.twitch.tv`
+en la sesión), con 155 muestras seguidas a 1920 px y 60 fps sin pausa ni parón.
 
 **Al limpiar navegadores de prueba colgados, nunca `taskkill //IM chrome.exe`:** mata el Chrome de
 Fran (memoria `no-matar-chrome-por-nombre-de-imagen` en `Projects`).
