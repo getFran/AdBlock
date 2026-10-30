@@ -5,7 +5,7 @@ trata aparte YouTube y Twitch. Se distribuye desde GitHub (repo **público** des
 por release que se carga descomprimido; ni Chrome Web Store ni Portainer. **Todo lo que ve otra persona
 va en inglés** (README, popup, avisos, notas de release, mensajes de commit); este fichero y las memorias
 son notas internas y siguen en español. La infraestructura compartida está en el
-`CLAUDE.md` de `PyCharm Projects`, que se carga solo: **no la dupliques aquí**.
+`CLAUDE.md` de `Projects`, que se carga solo: **no la dupliques aquí**.
 
 Croquis de decisión: `ProjectKit/ideas/bloqueador-de-anuncios-para-chrome-twitch-y-youtube.md`.
 **Léelo antes de proponer arquitectura**: la decisión de hacer este proyecto se tomó con ese
@@ -311,7 +311,7 @@ ver en un preroll real**: el registro de un preroll se escribe siempre (es un `b
 siguiente fichero `twitch-*-break.json` con `PREROLL` que caiga.
 
 **Al limpiar navegadores de prueba colgados, nunca `taskkill //IM chrome.exe`:** mata el Chrome de
-Fran (memoria `no-matar-chrome-por-nombre-de-imagen` en `PyCharm Projects`).
+Fran (memoria `no-matar-chrome-por-nombre-de-imagen` en `Projects`).
 
 ## Memoria del proyecto
 
