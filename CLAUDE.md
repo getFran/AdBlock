@@ -20,7 +20,7 @@ alcance (carcasa que consume piezas mantenidas por otros), no con otro.
 | Icono | `icons/dogwifhatnike.png` (elección de Fran, 2026-10-15); los `icons/icon-{16,32,48,128}.png` están renderizados y commiteados, el build solo los copia. Para cambiarlo, regenerar los cuatro tamaños (recorte cuadrado centrado) y commitearlos |
 | Repo | `getFran/AdBlock`, **público** desde el 2026-10-18 (Fran: «lo que tú veas mejor»; antes privado). Historial auditado: sin secretos; `.claude/` y este fichero se quedan dentro |
 | Rama | `main` |
-| Versión | `1.0.2` en `package.json` (publicada el 2026-10-22 por la tarde con `scripts/publish.mjs` desde esta sesión, que en bypass sí pudo empujar el tag; verificada antes en cuatro cortes reales de caedrel247: la playlist de la página se renumera al volver de un corte en vez de reiniciar el player; la 1.0.1 salió el 2026-10-21 con la recarga de pestañas al instalar y el reintento de `readScript`; la 1.0.0 el 2026-10-19); la Action construye la del tag (`EXT_VERSION`) |
+| Versión | `1.0.4` en `package.json` (publicada el 2026-10-31 con `scripts/publish.mjs` desde la sesión, en bypass: el preroll frío que la 1.0.3 dejó 5 min en negro; la 1.0.3 la publicó la Action el lunes 2026-10-26 con las listas nuevas y la espera a los tokens; la 1.0.2 el 2026-10-22 con el `pageRebase`, verificado antes en cuatro cortes reales de caedrel247; la 1.0.1 el 2026-10-21 con la recarga de pestañas al instalar y el reintento de `readScript`; la 1.0.0 el 2026-10-19); la Action construye la del tag (`EXT_VERSION`) |
 | Licencia | **GPL-3.0** (`LICENSE`): las listas y scriptlets de AdGuard y uAssets son GPL-3.0; Purple es Apache-2.0 y vaft MIT, atribuidos en `THIRD_PARTY_NOTICES.md`, que va dentro del zip |
 | Despliegue | **GitHub Releases**: `.github/workflows/release.yml` publica `getfran-adblock-<versión>.zip` (carpeta `getfran-adblock/` dentro, nombre fijo para descomprimir encima y conservar el ID) al empujar un tag `v*`, y los lunes si hay listas nuevas. En local, `npm run build` deja `dist/` para "Load unpacked" |
 
@@ -312,9 +312,23 @@ página con sus tres segmentos en blanco; el player recién creado no arrancó n
 imagen, `polls=1` en 39 s) y el guardián no toca un vídeo en pausa, porque eso es lo que hace Fran a mano: 38 s en
 negro hasta que cambió de canal y volvió. Desde el 26, un poll con anuncio sin ningún master de respaldo almacenado
 espera hasta 2,5 s a los tokens en vuelo (`awaitBackupMasters`; sale `no backup master yet: waited N ms` en el log del
-worker) antes de decidir, y ese preroll habría ido por el camino normal (`autoplay` 360p y luego `site`). **Queda por
-ver en un preroll real**: el registro de un preroll se escribe siempre (es un `breakFlaws`), así que la prueba es el
-siguiente fichero `twitch-*-break.json` con `PREROLL` que caiga. **Cuatro midrolls más el 30 en esportmaniacos**
+worker) antes de decidir. **El preroll real llegó el 31 (jaimemellado_, 13:04Z, al cambiar de canal desde knekro, con la
+1.0.3) y volvió a quedarse en negro, 5 min 20 s**: la espera resolvía con el **primer** master, que fue `popout` a los
+132 ms, nacido dentro del pod como todo token web pedido durante un anuncio, y los otros cinco (incluido `autoplay`, el
+único que un corte frío puede usar) llegaron entre 0 y 290 ms después, cuando la cadena ya había leído el almacén y los
+dio por `no-master`; con `popout=ads` y nada más, entregó la playlist de la página con sus tres segmentos en blanco, y el
+player recién creado pidió el primero (`blankAnswered=1`), no arrancó (`readyState` 0, `t` 0, sin fotogramas, 0 px,
+`playerState` Buffering) y no volvió a pedir playlist hasta que el propio Twitch se reinició con `PlayerRecoverableError
+"Outside live window"` a los 320 s, justo al volver Fran a la pestaña (la dejó a los 2,5 min). **El blanco no vale para
+un player frío por construcción**: es un init segment fMP4 sin muestras, y un player al que no se le ha añadido nada ni
+llama a `play` ni vuelve a pedir. Tres capas desde el 31 (1.0.4): la espera termina cuando **todos** los tokens se
+resuelven o cuando llega el master de `autoplay`, nunca con el primer master web; un player al que no se le ha entregado
+nada desde su master (`state.delivered` nulo: primera playlist de una carga o de un reload) **no recibe blancos**, sino
+la playlist tal cual vino con el anuncio (`passed=N` en el corte, evento `adPassedThrough`: unos segundos de anuncio y al
+siguiente poll ya hay backups); y el guardián trata como parón un vídeo sin datos (`readyState` 0, reloj a 0, sin
+fotogramas) aunque figure en pausa, porque un vídeo pausado por el espectador sigue cargando y su `readyState` sube
+(motivo `no data`). Con esto, ese preroll habría arrancado en `autoplay` 360p a los ~170 ms y pasado a `site` 1080p60 al
+acabar el pod. **Queda por ver en el siguiente preroll real** (su registro cae siempre). **Cuatro midrolls más el 30 en esportmaniacos**
 (1080p60, 1.0.3), que es el canal del desastre del 16: 62, 96, 59 y 130 s, los cuatro intercambiados a 1080p60 con
 **0 `offQuality`, 0 reinicios, 0 UI de anuncio y 0 merges o blancos**. Tres llevaron `held` y solo uno se notó, y eso
 es lo que los separa: con un `held` suelto (1,6 s en el de pod=3, 1,45 s en el de 130 s) el espectador no vio nada,

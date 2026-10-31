@@ -38,8 +38,13 @@
 //   - with none of those, the page's playlist with each ad segment replaced by the backup segment at the same
 //     date-time, and the ones left listed as they are but answered with the blank segment when the player asks;
 //   - and a poll with ad segments while no backup master is stored yet (the first playlist of a channel load, the
-//     tokens of the load still in flight) waits up to 2.5 s for the first master before any of the above
-//     (2026-10-25: three blank segments to a player that had not started yet left 38 s of black screen).
+//     tokens of the load still in flight) waits up to 2.5 s for the tokens before any of the above: for every one to
+//     settle or for autoplay's master, never just the first web master (2026-10-25: three blank segments to a player
+//     that had not started yet left 38 s of black screen; 2026-10-31: popout's master alone, born inside the pod like
+//     the other five that landed 0 to 290 ms later, left 5 min 20 s of it);
+//   - and a player that has been given nothing since its master (the first poll of a load or of a reload) never gets
+//     blank segments: the blank is an init segment with no samples, and a player with nothing appended does not start
+//     nor poll again. With nothing clean it gets the page's playlist as it came, ad and all, and the next poll swaps.
 // Diagnostics: console under [AdBlock/twitch:worker], and window.__adblockTwitch on the page (events, breaks, log).
 
 (function (scope) {
@@ -817,21 +822,26 @@
   // 335 ms before any backup master, so the chain had nothing to serve and the page's playlist went out with its three
   // segments blank; the new player never started nor polled again and the screen stayed black 38 s until the channel
   // was changed. With no backup master stored and tokens in flight (the prewarm of the load), a poll with ad segments
-  // waits for the first master to arrive, at most maxMs. Resolves with the wait in ms, null when there was no wait
+  // waits for the tokens, at most maxMs. Until 2026-10-31 the wait ended with the first master in: that day it was
+  // popout's, 132 ms in, born inside the pod like every web token asked during an ad, and the other five landed 0 to
+  // 290 ms later, after the chain had read the store, so the player got three blank segments again (5 min 20 s black,
+  // until Twitch's own "Outside live window" reset). The one master a cold break can use is autoplay's (the preview
+  // types are what a pod does not reach), so the wait ends when every token settled, when autoplay's master is in, or
+  // at the cap. Resolves with the wait in ms, null when there was no wait
   function awaitBackupMasters(maxMs) {
     if (state.backups.size || !state.pendingAccess.size) return Promise.resolve(null);
     const started = Date.now();
-    const pending = [...state.pendingAccess.values()];
+    const pending = [...state.pendingAccess.entries()];
     return new Promise((resolve) => {
       let left = pending.length;
       const timer = setTimeout(() => resolve(Date.now() - started), maxMs);
-      const settled = () => {
+      const settled = (type) => {
         left--;
-        if (!state.backups.size && left > 0) return;
+        if (left > 0 && !(type === LOW_QUALITY_TYPE && state.backups.has(LOW_QUALITY_TYPE))) return;
         clearTimeout(timer);
         resolve(Date.now() - started);
       };
-      for (const p of pending) p.then(settled, settled);
+      for (const [type, p] of pending) p.then(() => settled(type), () => settled(type));
     });
   }
 
@@ -996,6 +1006,7 @@
       blanked: 0,
       blankListed: 0,
       held: 0,
+      passed: 0,
       backups: [],
     };
     log('AD BREAK' + (resumed ? ' (again)' : '') + ' in the player playlist: roll=' + (summary.rollType || '?') + ' pod=' + (summary.podLength || '?') + ' adSegments=' + summary.adSegments + '/' + summary.segments + ' seq=' + summary.mediaSequence + ' quality=' + (state.quality || '?'));
@@ -1006,7 +1017,7 @@
     const b = state.break;
     if (!b) return;
     const info = { ...b, endedAt: now, durationMs: now - b.at, blankAnswered: state.blankAnswered, playlists: RELEASE ? [] : state.recent.filter((r) => r.at >= b.at - 10000) };
-    log('AD BREAK over after ' + Math.round(info.durationMs / 1000) + ' s: polls=' + b.polls + ' swapped=' + b.swapped + ' held=' + (b.held || 0) + ' merged=' + b.merged + ' blanked=' + b.blanked + ' (uris listed ' + b.blankListed + ', answered blank so far ' + state.blankAnswered + ') backups=' + (b.backups.map((x) => x.type + '@' + x.quality).join(' > ') || 'none'));
+    log('AD BREAK over after ' + Math.round(info.durationMs / 1000) + ' s: polls=' + b.polls + ' swapped=' + b.swapped + ' held=' + (b.held || 0) + ' merged=' + b.merged + ' blanked=' + b.blanked + ' passed=' + (b.passed || 0) + ' (uris listed ' + b.blankListed + ', answered blank so far ' + state.blankAnswered + ') backups=' + (b.backups.map((x) => x.type + '@' + x.quality).join(' > ') || 'none'));
     post({ adblock: 'break-end', info });
   }
 
@@ -1160,11 +1171,23 @@
     // no clean backup: the page's playlist with ad segments replaced by time (F-13), the rest answered blank (F-14)
     const merged = mergeWithBackups([text, ...dump]);
     if (merged.replaced) emit('segmentsReplaced', { count: merged.replaced });
-    if (b) b.merged++;
     if (!merged.remaining.length) {
+      if (b) b.merged++;
       log('player <- page playlist with ' + merged.replaced + ' ad segment(s) replaced from the backups');
       return stripAdDateranges(merged.text);
     }
+    if (!state.delivered) {
+      // nothing has been given to this player since its master (the first poll of a channel load or of a reload, born
+      // inside a pod with every web token asked alongside it). It cannot start on blank segments: the blank is an fMP4
+      // init segment with no samples, and a player with nothing appended never calls play nor polls again (2026-10-25:
+      // 38 s black; 2026-10-31: 5 min 20 s, until Twitch's own "Outside live window" reset). It gets the playlist as
+      // it came, ad segments included: a few seconds of the ad, and the next poll finds the backups ready
+      if (b) b.passed = (b.passed || 0) + 1;
+      log('player <- page playlist as it came, ' + merged.remaining.length + ' ad segment(s) included: nothing delivered since the master, and a player that has not started cannot play blank segments');
+      emit('adPassedThrough', { count: merged.remaining.length });
+      return text;
+    }
+    if (b) b.merged++;
     const blanked = blankAds(merged.text, merged.remaining, url);
     listBlank(blanked.uris, blanked.segments);
     if (b) b.blanked++;

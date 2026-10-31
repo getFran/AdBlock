@@ -185,7 +185,9 @@ check('summarize reports the roll type and the ad segment count for the logs', (
 });
 
 // the wait for the tokens in flight when a break finds no backup master (2026-10-25, the preroll at a channel change
-// that left 38 s of black screen): it ends with the first master, or when every token settled, or at the cap
+// that left 38 s of black screen; 2026-10-31, the same with popout's master in first and the other five 0 to 290 ms
+// behind it): it ends when every token settled or when autoplay's master is in, or at the cap, never with the first
+// web master alone
 {
   const S = W.state;
   const later = (ms, fn) => new Promise((resolve) => setTimeout(() => resolve(fn && fn()), ms));
@@ -197,21 +199,30 @@ check('summarize reports the roll type and the ad segment count for the logs', (
   assert.equal(await W.awaitBackupMasters(500), null, 'a master already stored: no wait');
   S.backups.clear();
   S.pendingAccess.clear();
+  S.pendingAccess.set('popout', later(40, () => S.backups.set('popout', { variants: [] })));
   S.pendingAccess.set('site', later(120, () => S.backups.set('site', { variants: [] })));
-  S.pendingAccess.set('popout', new Promise(() => {}));
-  const first = await W.awaitBackupMasters(2500);
-  assert.ok(first >= 100 && first < 1000, 'woke up with the first master, not at the cap: ' + first + ' ms');
+  const all = await W.awaitBackupMasters(2500);
+  assert.ok(all >= 110 && all < 1000, 'the first web master does not end the wait, every token settled does: ' + all + ' ms');
+  S.backups.clear();
+  S.pendingAccess.clear();
+  S.pendingAccess.set('popout', later(40, () => S.backups.set('popout', { variants: [] })));
+  S.pendingAccess.set('autoplay', later(120, () => S.backups.set('autoplay', { variants: [] })));
+  S.pendingAccess.set('site', new Promise(() => {}));
+  const low = await W.awaitBackupMasters(2500);
+  assert.ok(low >= 110 && low < 1000, "autoplay's master ends the wait with a token still in flight: " + low + ' ms');
   S.backups.clear();
   S.pendingAccess.clear();
   S.pendingAccess.set('site', later(60));
   const failed = await W.awaitBackupMasters(2500);
   assert.ok(failed >= 50 && failed < 1000, 'every token settled without a master: no more waiting: ' + failed + ' ms');
-  S.pendingAccess.set('site', new Promise(() => {}));
+  S.pendingAccess.set('site', later(40, () => S.backups.set('site', { variants: [] })));
+  S.pendingAccess.set('popout', new Promise(() => {}));
   const capped = await W.awaitBackupMasters(150);
-  assert.ok(capped >= 140 && capped < 1000, 'capped by the timeout: ' + capped + ' ms');
+  assert.ok(capped >= 140 && capped < 1000, 'a web master in and a token hanging: capped by the timeout: ' + capped + ' ms');
+  S.backups.clear();
   S.pendingAccess.clear();
   checks++;
-  console.log('ok  the wait for the tokens in flight ends with the first master, with every token settled, or at the cap');
+  console.log("ok  the wait for the tokens in flight ends with every token settled, with autoplay's master, or at the cap");
 }
 
 console.log(checks + ' checks passed');

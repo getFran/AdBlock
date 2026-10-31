@@ -18,8 +18,9 @@
 //   3. Answers the worker: GQL calls (run with the page's original fetch and headers), pause/play (sent to the worker
 //      as the player's own RPC), and its log and events, which go to the console under [AdBlock/twitch] and to
 //      window.__adblockTwitch (breaks, events, blank URIs, csaiBlocked, log) as the evidence when something fails.
-//   4. After a break, if the video stands still for a few seconds while not paused, one pause/play and, if still
-//      stuck, one soft reload of the player. Nothing otherwise: the worker's playlists are what keep it playing.
+//   4. After a break, if the video stands still for a few seconds while not paused, or never got any data at all
+//      (readyState 0 at 0 s: a player born inside a preroll that nothing started, 2026-10-25 and 31), one pause/play
+//      and, if still stuck, one soft reload of the player. Nothing otherwise: the worker's playlists are what keep it playing.
 //
 // A release build (__RELEASE__, build.mjs --release) keeps 1, 2, the GQL/pause/play answers of 3 and the guard of 4;
 // the console, window.__adblockTwitch, the samples and the record are development only.
@@ -283,7 +284,10 @@ const AD_UI_SELECTORS = ['[data-a-target="video-ad-label"]', '[data-a-target="vi
   // From the first poll with ad segments until WATCH_MS after the break's end, once a second: the clock (currentTime)
   // and the picture (decoded frames) must both move while the tab is visible and the video is not paused. Still for
   // STALL_MS: one pause/play (Purple's E6, through the worker's RPC); still STALL_MS later: one soft reload (vaft's
-  // setSrc). Once each per break. A frozen picture with the clock running is what Fran saw on 2026-10-16.
+  // setSrc). Once each per break. A frozen picture with the clock running is what Fran saw on 2026-10-16. A video that
+  // never got data (readyState 0, clock at 0, no frame decoded) counts even though it reads as paused: Twitch's player
+  // has not called play yet, and no viewer holds a video there, since a paused video still buffers and its readyState
+  // rises. That is how a player born inside a preroll sat black 38 s on 2026-10-25 and 5 min 20 s on 2026-10-31.
   function guardBreak(worker, info) {
     if (guard) clearInterval(guard.timer);
     const g = { worker, breakAt: info && info.at, endedAt: null, last: null, lastMoved: Date.now(), lastPainted: Date.now(), restarted: false, reloaded: false, timer: null };
@@ -298,8 +302,9 @@ const AD_UI_SELECTORS = ['[data-a-target="video-ad-label"]', '[data-a-target="vi
         if (g.last === null || t !== g.last.t) g.lastMoved = now;
         if (g.last === null || frames === null || frames !== g.last.frames) g.lastPainted = now;
         g.last = { t, frames };
-        const watching = document.visibilityState === 'visible' && !v.paused && !v.ended;
-        const why = !watching ? null : now - g.lastMoved >= STALL_MS ? 'clock' : now - g.lastPainted >= STALL_MS ? 'picture' : null;
+        const noData = v.readyState === 0 && t === 0 && !(frames > 0);
+        const watching = document.visibilityState === 'visible' && !v.ended && (!v.paused || noData);
+        const why = !watching ? null : now - g.lastMoved >= STALL_MS ? (noData ? 'no data' : 'clock') : now - g.lastPainted >= STALL_MS ? 'picture' : null;
         if (why && !g.restarted) {
           g.restarted = true;
           g.lastMoved = g.lastPainted = now;
@@ -368,11 +373,11 @@ const AD_UI_SELECTORS = ['[data-a-target="video-ad-label"]', '[data-a-target="vi
     }
   }
 
-  // What makes the record of a break worth writing: a preroll (the case still being watched), a held, merged or blanked
-  // poll, a backup off the player's quality, a player that stopped polling, a restart by the guard, and in the samples
-  // since the break began while the tab was visible: the ad UI, a media error, the clock or the picture still while
-  // not paused, or no picture at all (videoWidth 0: 2026-10-25, jaimemellado_, a preroll at a channel change left the
-  // new player paused and black 38 s, which the guard ignores because paused is what the viewer does by hand)
+  // What makes the record of a break worth writing: a preroll (the case still being watched), a held, merged, blanked
+  // or passed-through poll, a backup off the player's quality, a player that stopped polling, a restart by the guard,
+  // and in the samples since the break began while the tab was visible: the ad UI, a media error, the clock or the
+  // picture still while not paused, or no picture at all (videoWidth 0: 2026-10-25 and 31, jaimemellado_, a preroll at
+  // a channel change left the new player paused and black, 38 s and then 5 min 20 s)
   function breakFlaws(info) {
     const why = [];
     if (!info) return why;
@@ -380,6 +385,7 @@ const AD_UI_SELECTORS = ['[data-a-target="video-ad-label"]', '[data-a-target="vi
     if (info.held) why.push('held ' + info.held);
     if (info.merged) why.push('merged ' + info.merged);
     if (info.blanked) why.push('blanked ' + info.blanked);
+    if (info.passed) why.push('ad passed ' + info.passed);
     const off = (info.backups || []).filter((x) => x.quality !== info.quality).length;
     if (off) why.push(off + ' off quality');
     if (info.polls < 2 && info.durationMs > 10000) why.push(info.polls + ' poll(s) in ' + Math.round(info.durationMs / 1000) + ' s');
