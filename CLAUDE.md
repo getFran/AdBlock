@@ -233,7 +233,13 @@ build.mjs        lee build.config.mjs y escribe dist/:
 release si algo cambió (commit de `github-actions[bot]` en `main`: hay que hacer `git pull` antes de tocar nada).
 **En este PC va el build de desarrollo cargado desde `dist/`, no el zip**: cuando a Fran le salga el badge `NEW` aquí
 (la primera vez, la 1.0.3 del lunes 2026-10-26), lo que toca es `git pull && npm run build` y recargar en
-`chrome://extensions`, nunca descargar la release, que no lleva registros ni diagnóstico.
+`chrome://extensions`, nunca descargar la release, que no lleva registros ni diagnóstico. **La ID de una extensión sin
+empaquetar es el hash de su ruta absoluta y Chrome la guarda con la ruta**: al renombrar la carpeta paraguas (`PyCharm
+Projects` → `Projects`, 2026-10-30) Chrome no encontró `dist/` en el siguiente arranque y la quitó de la lista sin aviso
+(Fran la vio desaparecer el 2026-10-31). Se vuelve a cargar con "Load unpacked" desde
+`C:\Users\javie\Desktop\Projects\AdBlock\dist`, con ID nueva: el storage empieza de cero (`getfran.dev` se siembra solo;
+lo desactivado a mano, `pem.lol` entonces, se vuelve a marcar) y hay que fijarla otra vez en la barra. Si la carpeta
+vuelve a moverse, avisar antes y recargarla después.
 Para publicar a mano una versión: subir `version` en `package.json`, commit, y `node scripts/publish.mjs <PAT>`
 (idempotente: hace público el repo si aún no lo es, crea y empuja el tag, espera la Action y enseña la release; el
 token va por argumento, nunca en el repo). **El clasificador de auto mode deniega hacer público el repo y empujar
