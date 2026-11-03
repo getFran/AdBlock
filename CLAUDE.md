@@ -20,7 +20,7 @@ alcance (carcasa que consume piezas mantenidas por otros), no con otro.
 | Icono | `icons/dogwifhatnike.png` (elección de Fran, 2026-10-15); los `icons/icon-{16,32,48,128}.png` están renderizados y commiteados, el build solo los copia. Para cambiarlo, regenerar los cuatro tamaños (recorte cuadrado centrado) y commitearlos |
 | Repo | `getFran/AdBlock`, **público** desde el 2026-10-18 (Fran: «lo que tú veas mejor»; antes privado). Historial auditado: sin secretos; `.claude/` y este fichero se quedan dentro |
 | Rama | `main` |
-| Versión | `1.0.4` en `package.json` (publicada el 2026-10-31 con `scripts/publish.mjs` desde la sesión, en bypass: el preroll frío que la 1.0.3 dejó 5 min en negro; la 1.0.3 la publicó la Action el lunes 2026-10-26 con las listas nuevas y la espera a los tokens; la 1.0.2 el 2026-10-22 con el `pageRebase`, verificado antes en cuatro cortes reales de caedrel247; la 1.0.1 el 2026-10-21 con la recarga de pestañas al instalar y el reintento de `readScript`; la 1.0.0 el 2026-10-19); la Action construye la del tag (`EXT_VERSION`) |
+| Versión | `1.0.5` en `package.json` (la publicó la Action el lunes 2026-11-02 solo con listas nuevas: una regla de YouTube del Base de AdGuard y la pasada de uAssets, que añade un `json-prune-fetch-response` sobre `/resolve_url` y deja `youtube.js` en 36 reglas; la 1.0.4 el 2026-10-31 con `scripts/publish.mjs` desde la sesión, en bypass: el preroll frío que la 1.0.3 dejó 5 min en negro; la 1.0.3 la publicó la Action el lunes 2026-10-26 con las listas nuevas y la espera a los tokens; la 1.0.2 el 2026-10-22 con el `pageRebase`, verificado antes en cuatro cortes reales de caedrel247; la 1.0.1 el 2026-10-21 con la recarga de pestañas al instalar y el reintento de `readScript`; la 1.0.0 el 2026-10-19); la Action construye la del tag (`EXT_VERSION`) |
 | Licencia | **GPL-3.0** (`LICENSE`): las listas y scriptlets de AdGuard y uAssets son GPL-3.0; Purple es Apache-2.0 y vaft MIT, atribuidos en `THIRD_PARTY_NOTICES.md`, que va dentro del zip |
 | Despliegue | **GitHub Releases**: `.github/workflows/release.yml` publica `getfran-adblock-<versión>.zip` (carpeta `getfran-adblock/` dentro, nombre fijo para descomprimir encima y conservar el ID) al empujar un tag `v*`, y los lunes si hay listas nuevas. En local, `npm run build` deja `dist/` para "Load unpacked" |
 
@@ -159,7 +159,7 @@ alcance (carcasa que consume piezas mantenidas por otros), no con otro.
 build.mjs        lee build.config.mjs y escribe dist/:
   rulesets/      ruleset_<id>.json de AdGuard sin su regla de metadatos (el Base pesa 20 MB con ella)
   cosmetic/      runtime.js (selectores genéricos + runtime) y bucket-N.json (por dominio)
-  youtube.js     MAIN world: 35 reglas compiladas (27 del Base de AdGuard, 4 de uAssets, 4 locales) y el registro
+  youtube.js     MAIN world: 36 reglas compiladas (27 del Base de AdGuard, 5 de uAssets, 4 locales) y el registro
                  (src/youtube/record.js: últimos /player y /next tal como llegan, popup y pantalla de error)
   twitch.js      MAIN world: hook de Worker/fetch/XHR de la página con src/twitch/worker.js inlined (el bloqueo)
   bridge.js      ISOLATED (twitch.tv y YouTube), SOLO build de desarrollo: relé página -> service worker de los registros
