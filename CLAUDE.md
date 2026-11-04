@@ -82,11 +82,16 @@ alcance (carcasa que consume piezas mantenidas por otros), no con otro.
   en la carpeta significa que hay algo que leer, y lo único que tiene que hacer es decir la hora), cuando esa UI
   lleva 3 s visible, o a mano (`window.__adblockTwitch.save()`),
   construye un JSON (muestras, eventos, log, estado del worker y sus últimas 80 playlists: las del
-  player, las de los backups y lo entregado) y lo manda por `bridge.js` (mundo aislado, el único
+  player, las de los backups y lo entregado; desde el 2026-11-04 cada corte lleva además su propia ventana de muestras,
+  de 5 s antes a 30 s después, para que un registro escrito mucho después no lo deje sin ellas) y lo manda por `bridge.js` (mundo aislado, el único
   con `chrome.runtime` en twitch.tv y en YouTube) al service worker, que lo escribe con `chrome.downloads` (permiso
   `downloads`) en **`Descargas\AdBlock\twitch-<fecha>-<motivo>.json`**. Flujo: Fran dice a qué hora le
   saltó; la sesión lee el fichero más cercano en `C:\Users\javie\Downloads\AdBlock\`. Máximo uno
-  automático por minuto; va como data URL, así que se recorta a 1,2 MB (límite de URL de Chrome).
+  automático por minuto; va como data URL con tope de 8 MB (medido el 2026-11-04: `chrome.downloads` acepta 48 MB desde el
+  service worker, el límite de 2 MB es de navegación; el tope anterior de 1,2 MB se superaba siempre y el recorte dejaba
+  las 80 playlists en las 10 posteriores al corte y las muestras en 300 s). Si se pasa, salen primero las playlists de los
+  cortes anteriores, luego las más viejas del worker hasta 10 y luego el log; las muestras y las playlists del último corte
+  no se tocan.
 - **Interruptor por sitio** (2026-10-16, pedido por Fran tras quedarse Umami a medias). Popup de la
   extensión (`src/popup/`): "Desactivar en <host>" guarda el host en `chrome.storage.local`
   (`disabledSites`, sin `www.`, cubre subdominios) y el service worker lo aplica de dos formas: **los
@@ -219,7 +224,7 @@ build.mjs        lee build.config.mjs y escribe dist/:
 | `npm run build` | regenera `dist/` (≈1 s), build de desarrollo: registros, diagnóstico, consola |
 | `npm run build:release` | el `dist/` que se reparte: sin nada de eso (`EXT_VERSION=1.2.3` fija la versión) |
 | `npm test` | `test/twitch-playlists.mjs`: las piezas puras del worker, sin navegador |
-| `npm run records -- [--since=YYYY-MM-DD] [--verbose]` | `test/twitch-records.mjs`: resume cada corte de los registros de `Descargas\AdBlock\` (cadena de backups, `held`/`merged`/`blanked`, reinicios, `pageRebased`, y sobre las muestras: parones de reloj o de imagen, anchura, UI de anuncio). Cada registro lleva todos los cortes de su pestaña pero solo 300 s de muestras: cada corte se lee del primer registro que lo contiene. Es lo primero que se lanza cuando Fran trae registros nuevos |
+| `npm run records -- [--since=YYYY-MM-DD] [--verbose]` | `test/twitch-records.mjs`: resume cada corte de los registros de `Descargas\AdBlock\` (cadena de backups, `held`/`merged`/`blanked`, reinicios, `pageRebased`, y sobre las muestras: parones de reloj o de imagen, anchura, UI de anuncio). Cada registro lleva todos los cortes de su pestaña, cada uno con su ventana de muestras (desde el 2026-11-04; antes solo los 300 s finales de la pestaña, y un corte limpio leído del registro de otro 20 min después salía `NONE in window`): cada corte se lee del primer registro que lo contiene. Es lo primero que se lanza cuando Fran trae registros nuevos |
 | `npm run smoke` | carga `dist/` en el Chromium de Playwright y comprueba manifest, permisos, content scripts, alarma y globales (vale para los dos builds; `ADBLOCK_DIST=<carpeta>` prueba un zip descomprimido) |
 | `npm run probe -- [--twitch=<canal>] [--seconds=90] [--pip] [--navigate] [--race]` | abre un directo con el build de `dist/` (o `ADBLOCK_DIST`) y dice si el hook del worker está activo **sin depender de los globales** (los masters de usher: los tokens de respaldo solo se piden si nuestro worker corre), si el vídeo avanza y si sale la UI de anuncio; `--pip` y `--navigate` ejercitan el picture-in-picture y el mini-player. Es la única forma de probar la release en Twitch |
 | `node test/twitch-ladders.mjs [--twitch=<canal>]` | qué escalera de calidad da cada `player_type` x `platform`, pidiendo un token de cada uno a la vez (sin navegador: PlaybackAccessToken contesta anónimo). Contestó el 2026-10-24 que el techo de 360p es del tipo de player, no de la plataforma. `--watch=<s>` mantiene una sesión abierta y, al empezar un corte, pide todas las combinaciones a la vez; ojo que una sesión nueva puede recibir su propio preroll y confundir la lectura |

@@ -1,6 +1,7 @@
 // Summarises the Twitch break records the development build drops in Downloads\AdBlock\ (one per stitched break).
-// Each record carries every break of its tab so far, but only the last 300 s of video samples: a break is read from
-// the first record that contains its end, which is the one written 20 s after it. Usage:
+// Each record carries every break of its tab so far, each with its own window of video samples (5 s before to 30 s
+// after; records before 2026-11-04 only had the tab's last 300 s): a break is read from the first record that
+// contains its end, which is the one written 20 s after it when it was not clean. Usage:
 //   node test/twitch-records.mjs [dir] [--since=YYYY-MM-DD] [--verbose]
 import fs from 'node:fs';
 import path from 'node:path';
@@ -42,8 +43,10 @@ for (const file of files) {
     const chain = runs(b.backups || [], (x) => `${x.type}@${x.quality}`);
     const offQuality = (b.backups || []).filter((x) => x.quality !== b.quality).length;
     const shifts = [...new Set((b.backups || []).map((x) => x.shift))];
-    const samples = (r.samples || []).filter((s) => s.at >= w0 && s.at <= w1);
-    const covered = r.samples && r.samples.length && r.samples[0].at <= w0;
+    // the break's own samples (attached 30 s after it ended, since 2026-11-04) or the tab's ring, if it reaches back
+    const own = b.samples && b.samples.length ? b.samples : null;
+    const samples = own || (r.samples || []).filter((s) => s.at >= w0 && s.at <= w1);
+    const covered = own ? own[0].at <= w0 : r.samples && r.samples.length && r.samples[0].at <= w0;
     // stalls: consecutive visible, unpaused samples whose clock (or decoded frames, with the clock moving) does not advance
     let clockRun = 0, clockMax = 0, picRun = 0, picMax = 0, paused = 0, lowReady = 0, adUi = 0, hidden = 0, errs = 0, videos = 0;
     for (let i = 1; i < samples.length; i++) {

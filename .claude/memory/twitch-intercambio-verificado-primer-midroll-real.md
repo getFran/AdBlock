@@ -81,8 +81,8 @@ un corte largo las del momento interesante ya no están; si hace falta verlas, c
 (`CompressionStream`) antes de mandarlo al service worker.
 
 **Doce cortes más, del 2026-10-18 (tarde) al 22** (leídos el 22 con `npm run records`, que resume cada corte de los
-registros; cada registro lleva todos los cortes de su pestaña y solo 300 s de muestras, así que cada corte se lee del
-primer registro que lo contiene). ibai 19:05, 20:05 y 20:45 UTC del 18 (62, 54 y 54 s), caedrel 21:07 del 18 (56 s),
+registros; cada registro lleva todos los cortes de su pestaña y, hasta el 2026-11-04, solo 300 s de muestras, así que cada corte
+se lee del primer registro que lo contiene; desde entonces cada corte lleva su propia ventana de muestras). ibai 19:05, 20:05 y 20:45 UTC del 18 (62, 54 y 54 s), caedrel 21:07 del 18 (56 s),
 caedrel247 15:06, 15:31 y 15:43 del 19 (76, 40 y 54 s, 1.0.0, llegado por raid) y **nueve de caedrel el 22 con la
 1.0.1** (10:03 pod 5 de 184 s, 10:28, 11:20, 12:11, 12:37, 13:03 pod 5 de 98 s, 13:34, 13:59 pod 2, 14:25; 31 a 53
 polls cada uno). En los doce: **todos los polls `swapped` a 1080p60**, 0 `held`, 0 `merged`, 0 `blanked`, 0 caídas a

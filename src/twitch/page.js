@@ -38,7 +38,11 @@ const AD_UI_RUN = 3; // Twitch's ad UI seen this many samples in a row makes a r
 const SAVE_AFTER_BREAK_MS = 20000; // the record of a break waits for what the player does after it
 const SAVE_MIN_GAP_MS = 60000; // at most one automatic record per minute
 const DUMP_TIMEOUT_MS = 1500; // how long a record waits for the worker's playlists
-const RECORD_MAX_BYTES = 1200000; // the record travels as a data URL to chrome.downloads; Chrome's URL limit is 2 MB
+const BREAK_SAMPLES_BEFORE_MS = 5000; // every break keeps its own window of samples, from this long before it began...
+const BREAK_SAMPLES_AFTER_MS = 30000; // ...to this long after it ended: a record written long after it still carries them
+const RECORD_MAX_BYTES = 8000000; // the record travels as a data URL to chrome.downloads: measured on 2026-11-04, a 48 MB one
+// downloads fine from the service worker (the 2 MB limit is for navigations); 8 MB keeps a file readable and is only
+// reached by a tab with many breaks, whose older playlists go first
 // Twitch's ad UI, as vaft and Purple look for it
 const AD_UI_SELECTORS = ['[data-a-target="video-ad-label"]', '[data-a-target="video-ad-countdown"]', '.video-ad-label', '[data-test-selector="ad-banner-default-text"]', '[data-a-target="player-ad-notice"]', '[data-a-target="ad-banner-default-text"]', '.stream-display-ad'];
 
@@ -441,7 +445,7 @@ const AD_UI_SELECTORS = ['[data-a-target="video-ad-label"]', '[data-a-target="vi
         masters: state.masters,
         breaks: state.breaks,
         breakEnds: state.breakEnds,
-        events: state.events.slice(-500),
+        events: state.events,
         blankUris: state.blankUris,
         csaiBlocked: state.csaiBlocked,
         restarts: state.restarts,
@@ -450,17 +454,23 @@ const AD_UI_SELECTORS = ['[data-a-target="video-ad-label"]', '[data-a-target="vi
         log: state.log.slice(-1500),
       };
       let json = JSON.stringify(record);
+      // Over budget, the playlists go first and the samples never. Until 2026-11-04 the budget was 1.2 MB, every record
+      // was over it, and the trim cut the worker's 80 playlists to the 10 after the break (a held in the middle of it
+      // had none left) and the samples to 300 s (a clean break read from the record of another, 20 min later, had none).
+      // Now: the playlists of the earlier breaks (a break that was not clean had its own record with them), then the
+      // worker's oldest down to 10, then the log; the last break's playlists, the samples and the events stay whole.
+      if (json.length > RECORD_MAX_BYTES && record.breakEnds.length > 1) {
+        record.breakEnds = record.breakEnds.map((b, i) => (i < record.breakEnds.length - 1 ? { ...b, playlists: [], playlistsTrimmed: (b.playlists || []).length } : b));
+        json = JSON.stringify(record);
+      }
       if (json.length > RECORD_MAX_BYTES && record.worker && record.worker.recent) {
-        // the playlists are the bulk: the oldest go first
         while (json.length > RECORD_MAX_BYTES && record.worker.recent.length > 10) {
           record.worker.recent.shift();
           json = JSON.stringify(record);
         }
       }
       if (json.length > RECORD_MAX_BYTES) {
-        record.breakEnds = record.breakEnds.map((b) => ({ ...b, playlists: (b.playlists || []).slice(-10) }));
         record.log = record.log.slice(-300);
-        record.samples = record.samples.slice(-300);
         json = JSON.stringify(record);
       }
       window.postMessage({ source: 'adblock-twitch', type: 'save', name, json }, location.origin);
@@ -539,6 +549,12 @@ const AD_UI_SELECTORS = ['[data-a-target="video-ad-label"]', '[data-a-target="vi
         else guardBreak(worker, data.info);
         if (!__RELEASE__) {
           const info = data.info;
+          // the break's own samples, so a record written long after it (a clean break makes none) still carries what
+          // the viewer saw: 2026-11-04, two clean breaks of esportmaniacos read from a record 20 min later had none
+          setTimeout(() => {
+            const from = info.at - BREAK_SAMPLES_BEFORE_MS, to = (info.endedAt || info.at) + BREAK_SAMPLES_AFTER_MS;
+            info.samples = state.samples.filter((s) => s.at >= from && s.at <= to);
+          }, Math.max(0, (info.endedAt || Date.now()) + BREAK_SAMPLES_AFTER_MS - Date.now()));
           setTimeout(() => {
             const why = breakFlaws(info);
             const seconds = Math.round(((info && info.durationMs) || 0) / 1000);
