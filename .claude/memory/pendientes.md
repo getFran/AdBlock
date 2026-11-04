@@ -15,9 +15,11 @@ hacer él va marcado **(Fran)**.
 
 ## Pendiente a 2026-11-04
 
-1. **(Fran) Recargar la extensión en `chrome://extensions`.** El `dist/` se reconstruyó el 2026-11-04 con el commit
-   `496fd56` (ventana de muestras por corte y recorte nuevo del registro). Hasta que recargue, los registros salen con la
-   forma vieja: 300 muestras, 10 playlists del worker.
+1. **(Fran) F5 en la pestaña de Twitch que tuviera abierta.** La extensión se recargó el 2026-11-04 a las 17:49 con el
+   `dist/` del commit `496fd56` (ventana de muestras por corte y recorte nuevo del registro), pero al recargar una
+   extensión sin empaquetar `onInstalled` llega con `reason: update` y el service worker solo recarga las pestañas en
+   `install`: una pestaña abierta de antes sigue con el `page.js` viejo hasta que se recargue. Un registro cuyos
+   `breakEnds` traigan `samples` demuestra que ya corre el nuevo.
 
 2. **Verificar la ventana de muestras por corte** (`496fd56`, sin probar en vivo). Hace falta un registro escrito
    **después** de al menos un corte limpio en la misma pestaña: o cae solo por un corte con pega (esportmaniacos los
