@@ -40,11 +40,17 @@ for (const file of files) {
     const counts = {};
     for (const e of ev) counts[e.type] = (counts[e.type] || 0) + 1;
     const maxAd = Math.max(0, ...ev.filter((e) => e.type === 'adDetected').map((e) => e.adSegments));
-    const chain = runs(b.backups || [], (x) => `${x.type}@${x.quality}`);
-    const offQuality = (b.backups || []).filter((x) => x.quality !== b.quality).length;
+    // off quality is against the variant the player polled at the time (`player`, since 2026-11-05): a break's
+    // `quality` is the one it began with, and a cold player climbs during a preroll (zeling, 2026-11-05: 360p to
+    // 1080p60 four seconds into 42 s of autoplay@360p, and this read 0)
+    const label = (x) => `${x.type}@${x.quality}${x.player && x.player !== x.quality ? ' for ' + x.player : ''}`;
+    const chain = runs(b.backups || [], label);
+    const offQuality = (b.backups || []).filter((x) => x.quality !== (x.player || b.quality)).length;
     const shifts = [...new Set((b.backups || []).map((x) => x.shift))];
-    // the break's own samples (attached 30 s after it ended, since 2026-11-04) or the tab's ring, if it reaches back
+    // the break's own samples (since 2026-11-04: attached 30 s after it ended, or cut at the save in its own record,
+    // written 20 s after it) or the tab's ring, if it reaches back
     const own = b.samples && b.samples.length ? b.samples : null;
+    const partial = own && b.samplesPartial;
     const samples = own || (r.samples || []).filter((s) => s.at >= w0 && s.at <= w1);
     const covered = own ? own[0].at <= w0 : r.samples && r.samples.length && r.samples[0].at <= w0;
     // stalls: consecutive visible, unpaused samples whose clock (or decoded frames, with the clock moving) does not advance
@@ -72,10 +78,10 @@ for (const file of files) {
     console.log(`    events: ${JSON.stringify(counts)}`);
     for (const e of ev) if (['PlayerError', 'PlayerRecoverableError', 'playerState', 'sequenceRestart', 'backupHeld', 'pageRebased', 'adUi', 'blankInserted', 'backupsAwaited', 'adPassedThrough', 'stallRestart'].includes(e.type)) console.log(`      ${hhmmss(e.at)} ${e.type} ${JSON.stringify({ ...e, type: undefined, at: undefined })}`);
     if (!samples.length) console.log('    samples: NONE in window');
-    else console.log(`    samples=${samples.length} covered=${!!covered} clockStill<=${clockMax}s pictureStill<=${picMax}s paused=${paused} ready<3=${lowReady} adUi=${adUi} hidden=${hidden} err=${errs} videos<=${videos} frames ${samples[0].frames}->${samples[samples.length - 1].frames}  t ${samples[0].t.toFixed(1)}->${samples[samples.length - 1].t.toFixed(1)}`);
+    else console.log(`    samples=${samples.length}${partial ? ' (cut at the save)' : ''} covered=${!!covered} clockStill<=${clockMax}s pictureStill<=${picMax}s paused=${paused} ready<3=${lowReady} adUi=${adUi} hidden=${hidden} err=${errs} videos<=${videos} frames ${samples[0].frames}->${samples[samples.length - 1].frames}  t ${samples[0].t.toFixed(1)}->${samples[samples.length - 1].t.toFixed(1)}`);
     if (samples.length) console.log(`    width: ${widths}`);
     for (const x of restarts) console.log(`    RESTART ${hhmmss(x.at)} ${JSON.stringify(x)}`);
-    if (verbose) for (const x of b.backups || []) console.log(`      ${hhmmss(x.at)} ${x.type}@${x.quality} +${x.shift}`);
+    if (verbose) for (const x of b.backups || []) console.log(`      ${hhmmss(x.at)} ${label(x)} +${x.shift}`);
   }
 }
 console.log(`\n${shown} breaks in ${files.length} files`);

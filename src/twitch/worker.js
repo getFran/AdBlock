@@ -927,14 +927,18 @@
     if (backup.type !== LOW_QUALITY_TYPE) state.pinnedType = backup.type;
     const b = state.break;
     const quality = backup.variant ? backup.variant.name : '?';
+    // the variant the player polls right now, kept with every entry: a break's `quality` is the one it began with, and
+    // a cold player climbs during it (2026-11-05, zeling: from 360p to 1080p60 four seconds into a 42 s preroll, so
+    // autoplay@360p was off quality for 38 s while the record read 0)
+    const player = state.quality || null;
     if (b) {
       b.swapped++;
       const last = b.backups[b.backups.length - 1];
-      if (!last || last.type !== backup.type || last.quality !== quality) b.backups.push({ type: backup.type, quality, at: Date.now(), shift: aligned.shift });
+      if (!last || last.type !== backup.type || last.quality !== quality || last.player !== player) b.backups.push({ type: backup.type, quality, player, at: Date.now(), shift: aligned.shift });
     }
     if (state.source !== source) {
-      log('player <- backup ' + backup.type + '@' + quality + ' (MEDIA-SEQUENCE shift ' + (aligned.shift == null ? 'n/a' : (aligned.shift >= 0 ? '+' : '') + aligned.shift) + ', newest ' + newestNumber(aligned.text) + ')');
-      emit('backupUsed', { playerType: backup.type, quality, shift: aligned.shift });
+      log('player <- backup ' + backup.type + '@' + quality + (player && qualityName(player) !== qualityName(quality) ? ' for a player at ' + player : '') + ' (MEDIA-SEQUENCE shift ' + (aligned.shift == null ? 'n/a' : (aligned.shift >= 0 ? '+' : '') + aligned.shift) + ', newest ' + newestNumber(aligned.text) + ')');
+      emit('backupUsed', { playerType: backup.type, quality, player, shift: aligned.shift });
     }
     state.source = source;
     if (backup.type !== LOW_QUALITY_TYPE) state.lastBackup = { text: aligned.text, at: Date.now(), quality, source };
@@ -1017,7 +1021,7 @@
     const b = state.break;
     if (!b) return;
     const info = { ...b, endedAt: now, durationMs: now - b.at, blankAnswered: state.blankAnswered, playlists: RELEASE ? [] : state.recent.filter((r) => r.at >= b.at - 10000) };
-    log('AD BREAK over after ' + Math.round(info.durationMs / 1000) + ' s: polls=' + b.polls + ' swapped=' + b.swapped + ' held=' + (b.held || 0) + ' merged=' + b.merged + ' blanked=' + b.blanked + ' passed=' + (b.passed || 0) + ' (uris listed ' + b.blankListed + ', answered blank so far ' + state.blankAnswered + ') backups=' + (b.backups.map((x) => x.type + '@' + x.quality).join(' > ') || 'none'));
+    log('AD BREAK over after ' + Math.round(info.durationMs / 1000) + ' s: polls=' + b.polls + ' swapped=' + b.swapped + ' held=' + (b.held || 0) + ' merged=' + b.merged + ' blanked=' + b.blanked + ' passed=' + (b.passed || 0) + ' (uris listed ' + b.blankListed + ', answered blank so far ' + state.blankAnswered + ') backups=' + (b.backups.map((x) => x.type + '@' + x.quality + (x.player && qualityName(x.player) !== qualityName(x.quality) ? ' for ' + x.player : '')).join(' > ') || 'none'));
     post({ adblock: 'break-end', info });
   }
 

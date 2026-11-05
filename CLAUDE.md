@@ -83,7 +83,8 @@ alcance (carcasa que consume piezas mantenidas por otros), no con otro.
   lleva 3 s visible, o a mano (`window.__adblockTwitch.save()`),
   construye un JSON (muestras, eventos, log, estado del worker y sus últimas 80 playlists: las del
   player, las de los backups y lo entregado; desde el 2026-11-04 cada corte lleva además su propia ventana de muestras,
-  de 5 s antes a 30 s después, para que un registro escrito mucho después no lo deje sin ellas) y lo manda por `bridge.js` (mundo aislado, el único
+  de 5 s antes a 30 s después, para que un registro escrito mucho después no lo deje sin ellas; en el registro del propio corte, que cae a los 20 s, van
+  cortadas en ese momento y marcadas `samplesPartial`) y lo manda por `bridge.js` (mundo aislado, el único
   con `chrome.runtime` en twitch.tv y en YouTube) al service worker, que lo escribe con `chrome.downloads` (permiso
   `downloads`) en **`Descargas\AdBlock\twitch-<fecha>-<motivo>.json`**. Flujo: Fran dice a qué hora le
   saltó; la sesión lee el fichero más cercano en `C:\Users\javie\Downloads\AdBlock\`. Máximo uno
@@ -333,7 +334,20 @@ la playlist tal cual vino con el anuncio (`passed=N` en el corte, evento `adPass
 siguiente poll ya hay backups); y el guardián trata como parón un vídeo sin datos (`readyState` 0, reloj a 0, sin
 fotogramas) aunque figure en pausa, porque un vídeo pausado por el espectador sigue cargando y su `readyState` sube
 (motivo `no data`). Con esto, ese preroll habría arrancado en `autoplay` 360p a los ~170 ms y pasado a `site` 1080p60 al
-acabar el pod. **Queda por ver en el siguiente preroll real** (su registro cae siempre). **Cuatro midrolls más el 30 en esportmaniacos**
+acabar el pod. **El siguiente preroll real llegó el 5 de noviembre (zeling, 09:06Z, carga de canal, 42 s, 1.0.5) y salió
+bien sin tocar esas tres capas**: los seis masters de respaldo estuvieron listos a los 530 ms del master de usher, 240 ms
+**antes** de la primera playlist del player, así que la cadena tenía `autoplay` limpio desde el poll 1 (23/23 `swapped`,
+0 `held`, 0 blancos, 0 `passed`, sin espera) y lo entregó 840 ms después del poll (`site` primero, 720 ms y con anuncio;
+los otros cinco en paralelo). Primera imagen a los ~4 s de cargar la página; los 42 s a 360p y 30 fps porque el player
+subió él solo a 1080p60 a los 4 s y cada token web pedido durante el pod volvió con el anuncio (el techo de `autoplay`,
+cerrado el 24); al acabar, `pageRebase` +3196 sin reinicio y 1080p60 a 60 fps dos segundos después, sin negro, sin pausa y
+sin parón. Quién gana la carrera entre tokens y primera playlist lo decide cada carga (el 31 la playlist llegó 800 ms tras
+el master y antes que cualquier token; hoy los tokens a los 530 ms y la playlist a los 650 ms): el pase del anuncio y la
+espera siguen sin ejercitarse en vivo. **Ese registro lo leyó mal `npm run records`: `offQuality=0`**, porque comparaba
+con la calidad con que empezó el corte (360p) y el player ya iba a 1080p60; desde el 5 cada entrada de `backups` lleva la
+calidad del player en ese momento (`player`), la cadena sale `autoplay@360p for 1080p60` y `breakFlaws` cuenta con ella.
+Y el registro de un corte nunca llevaba sus propias `samples` (se adjuntan a los 30 s del fin y el registro cae a los 20):
+desde el 5 van cortadas en el momento de guardar, con `samplesPartial: true`. **Cuatro midrolls más el 30 en esportmaniacos**
 (1080p60, 1.0.3), que es el canal del desastre del 16: 62, 96, 59 y 130 s, los cuatro intercambiados a 1080p60 con
 **0 `offQuality`, 0 reinicios, 0 UI de anuncio y 0 merges o blancos**. Tres llevaron `held` y solo uno se notó, y eso
 es lo que los separa: con un `held` suelto (1,6 s en el de pod=3, 1,45 s en el de 130 s) el espectador no vio nada,
@@ -347,7 +361,12 @@ porque estaba en pausa, y lo que lo delata es el campo `paused=4` de las muestra
 1080p60 es lo que cuesta no bajar a 360p, que es el revés del lote del 23; por debajo de los 6 s del guardián y sin
 tocar nada. **El de 130 s es además el más largo del día y el más limpio**: el anuncio cosido solo duró 51 s y el
 resto es la cola `MARKED_LIVE` del anuncio client-side, que se corta por red (26 peticiones a `edge.ads.twitch.tv`
-en la sesión), con 155 muestras seguidas a 1920 px y 60 fps sin pausa ni parón.
+en la sesión), con 155 muestras seguidas a 1920 px y 60 fps sin pausa ni parón. **Treinta y un cortes más del 1 al 4 de
+noviembre** (reventxz ×10, elbokeron 1, pausenpaii 2 y esportmaniacos ×18, todos a 1080p60 con la 1.0.4 y la 1.0.5): 0
+`offQuality`, 0 reinicios, 0 UI de anuncio y 0 merges o blancos; doce de los de esportmaniacos con `held` de 1-1,8 s y
+ninguno le costó nada al espectador: la única muestra en pausa de los 31 es un buffering de 0,6 s al arrancar el de las
+15:32Z del día 2 (los cinco backups un número atrás en la primera ronda), 24 s antes de su `held`. Desde el 1 de noviembre
+todos los registros los dispara un `held` de esportmaniacos; los demás canales no dejan ninguno.
 
 **Al limpiar navegadores de prueba colgados, nunca `taskkill //IM chrome.exe`:** mata el Chrome de
 Fran (memoria `no-matar-chrome-por-nombre-de-imagen` en `Projects`).

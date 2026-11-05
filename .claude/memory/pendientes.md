@@ -1,6 +1,6 @@
 ---
 name: pendientes
-description: Lo que quedó sin verificar o sin documentar al cerrar una sesión; se lee al abrir y se tacha al resolverse. Actualizado el 2026-11-04.
+description: Lo que quedó sin verificar o sin documentar al cerrar una sesión; se lee al abrir y se tacha al resolverse. Actualizado el 2026-11-05.
 metadata:
   type: project
 ---
@@ -13,38 +13,33 @@ extensión, forzar un registro), y la siguiente sesión tiene que saber qué que
 Al cerrarlo, quitarlo de aquí (si deja lección, va a su memoria o al `CLAUDE.md`) y commitear. Lo que Fran tiene que
 hacer él va marcado **(Fran)**.
 
-## Pendiente a 2026-11-04
+## Pendiente a 2026-11-05
 
-1. **(Fran) F5 en la pestaña de Twitch que tuviera abierta.** La extensión se recargó el 2026-11-04 a las 17:49 con el
-   `dist/` del commit `496fd56` (ventana de muestras por corte y recorte nuevo del registro), pero al recargar una
-   extensión sin empaquetar `onInstalled` llega con `reason: update` y el service worker solo recarga las pestañas en
-   `install`: una pestaña abierta de antes sigue con el `page.js` viejo hasta que se recargue. Un registro cuyos
-   `breakEnds` traigan `samples` demuestra que ya corre el nuevo.
+1. **(Fran) Recargar la extensión en `chrome://extensions` y F5 en la pestaña de Twitch.** El `dist/` del 2026-11-05
+   (commit del preroll de zeling) añade `player` a cada entrada de `backups` del corte y corta las `samples` del corte al
+   guardar. Al recargar una extensión sin empaquetar `onInstalled` llega con `reason: update` y el service worker solo
+   recarga las pestañas en `install`: una pestaña abierta de antes sigue con el `page.js` viejo. Lo demuestra un registro
+   cuyo último `breakEnds[]` traiga `samplesPartial: true` o cuyas entradas de `backups` traigan `player`. (Resuelto el
+   punto del día 4: el registro del 5 ya salió con el build del `496fd56`, se ve en que pasa de los 1,2 MB del tope viejo.)
 
-2. **Verificar la ventana de muestras por corte** (`496fd56`, sin probar en vivo). Hace falta un registro escrito
-   **después** de al menos un corte limpio en la misma pestaña: o cae solo por un corte con pega (esportmaniacos los
-   tiene cada 20 min y casi siempre con `held`), o lo fuerza Fran con `window.__adblockTwitch.save()` en la consola de la
-   pestaña. Se cierra si en el JSON cada `breakEnds[i]` trae `samples` (≈ duración del corte + 35 entradas, de 5 s antes a
-   30 s después) y `npm run records` muestra `samples=N covered=true` en los cortes limpios en vez de `samples: NONE in
-   window`. En los registros hasta el 4 de noviembre inclusive, todos los cortes limpios salían `NONE in window`.
+2. **Verificar la ventana de muestras por corte** (`496fd56`, sin verla aún en un registro). Hace falta un registro escrito
+   **después** de al menos un corte limpio en la misma pestaña: o cae solo por un corte con pega (esportmaniacos los tiene
+   cada 20 min y casi siempre con `held`), o lo fuerza Fran con `window.__adblockTwitch.save()` en la consola de la pestaña.
+   Se cierra si en el JSON cada `breakEnds[i]` anterior al último trae `samples` (≈ duración del corte + 35 entradas, de 5 s
+   antes a 30 s después, sin `samplesPartial`) y `npm run records` muestra `samples=N covered=true` en los cortes limpios en
+   vez de `samples: NONE in window`. El último corte del registro sale desde el 5 con `(cut at the save)`, y eso es lo
+   esperado.
 
-3. **Verificar el recorte nuevo por encima de 8 MB** (`496fd56`, lógica sencilla pero sin ejercitar). Solo lo dispara una
-   pestaña con muchos cortes: la del 2 de noviembre llevaba 17 y sin recortar habría rondado los 17 MB. Se cierra si en un
-   registro así los `breakEnds` anteriores al último traen `playlists: []` con `playlistsTrimmed: N`, el último conserva las
-   suyas, `worker.recent` pasa de 10 (hasta 80), `samples` llega a 900 y `events` no se corta en 500, y el fichero no pasa
-   de 8 MB. Medido ese día: `chrome.downloads` escribe 48 MB como data URL desde el service worker, así que el tope es
-   por legibilidad, no por Chrome.
+3. **Verificar el recorte nuevo por encima de 8 MB** (`496fd56`, lógica sencilla pero sin ejercitar; el del 5 pesó 3,2 MB
+   con un solo corte). Solo lo dispara una pestaña con muchos cortes: la del 2 de noviembre llevaba 17 y sin recortar
+   habría rondado los 17 MB. Se cierra si en un registro así los `breakEnds` anteriores al último traen `playlists: []` con
+   `playlistsTrimmed: N`, el último conserva las suyas, `worker.recent` pasa de 10 (hasta 80), `samples` llega a 900 y
+   `events` no se corta en 500, y el fichero no pasa de 8 MB.
 
-4. **El siguiente preroll real** (pendiente desde el 2026-10-31, 1.0.4; está en el `CLAUDE.md` como "Queda por ver en el
-   siguiente preroll real"). Su registro cae siempre (`preroll` es pega). Se cierra si en él el player frío recibe la
-   playlist con anuncio (`passed=N`, evento `adPassedThrough`) en vez de blancos, arranca en `autoplay` 360p en ~200 ms,
-   pasa a `site` 1080p60 al acabar el pod, y no hay pantalla en negro ni hace falta el reinicio por `no data`. Si vuelve a
-   quedarse en negro, lo primero es el log del worker (`awaitBackupMasters`, `no backup master yet`).
-
-5. **Documentar los registros del 1 al 4 de noviembre** en el histórico del `CLAUDE.md` y en la memoria
-   `twitch-intercambio-verificado-primer-midroll-real`. Son 31 cortes, todos a 1080p60, 0 `offQuality` y 0 reinicios: 9 el
-   día 1 (reventxz ×4 limpios, esportmaniacos ×5 con `held`), 17 el día 2 (elbokeron 1, reventxz 6, pausenpaii 2, todos
-   limpios; esportmaniacos 8, cuatro con `held`) y 5 el día 4 (esportmaniacos, tres con `held` de ~1,75 s). Desde el 1 de
-   noviembre **todos los registros los ha disparado un `held` de esportmaniacos**; los demás canales no han dado ninguno.
-   Queda por leer con `--verbose` si algún `held` costó una pausa del player (campo `paused=N` de las muestras, como el
-   del 30 de octubre), y luego resumirlo en una frase en los dos sitios.
+4. **El pase del anuncio y la espera a los tokens siguen sin verse en vivo** (1.0.4). El preroll del 5 (zeling) salió
+   bien, pero los seis tokens llegaron 240 ms antes que la primera playlist y la cadena no necesitó ni `awaitBackupMasters`
+   ni `passed`. Solo los ejercita un preroll en el que la primera playlist gane a los tokens (el 31 fue así: playlist a los
+   800 ms del master, tokens después). Su registro cae siempre (`preroll` es pega). Se cierra si en uno así el player frío
+   recibe la playlist con anuncio (`passed=N`, evento `adPassedThrough`) en vez de blancos, arranca en `autoplay` 360p y no
+   hay negro ni reinicio por `no data`. Si vuelve a quedarse en negro, lo primero es el log del worker
+   (`no backup master yet: waited N ms`).

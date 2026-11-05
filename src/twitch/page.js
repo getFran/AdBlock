@@ -390,7 +390,8 @@ const AD_UI_SELECTORS = ['[data-a-target="video-ad-label"]', '[data-a-target="vi
     if (info.merged) why.push('merged ' + info.merged);
     if (info.blanked) why.push('blanked ' + info.blanked);
     if (info.passed) why.push('ad passed ' + info.passed);
-    const off = (info.backups || []).filter((x) => x.quality !== info.quality).length;
+    // against the variant the player polled at the time (since 2026-11-05: a cold player climbs during a preroll)
+    const off = (info.backups || []).filter((x) => x.quality !== (x.player || info.quality)).length;
     if (off) why.push(off + ' off quality');
     if (info.polls < 2 && info.durationMs > 10000) why.push(info.polls + ' poll(s) in ' + Math.round(info.durationMs / 1000) + ' s');
     if (state.restarts.some((r) => r.at >= info.at)) why.push('restart');
@@ -423,6 +424,13 @@ const AD_UI_SELECTORS = ['[data-a-target="video-ad-label"]', '[data-a-target="vi
     return why;
   }
 
+  // a break's own window of samples, from BREAK_SAMPLES_BEFORE_MS before it to BREAK_SAMPLES_AFTER_MS after it; while
+  // the window is still open it is what there is so far
+  function breakSamples(info) {
+    const from = info.at - BREAK_SAMPLES_BEFORE_MS, to = (info.endedAt || info.at) + BREAK_SAMPLES_AFTER_MS;
+    return state.samples.filter((s) => s.at >= from && s.at <= to);
+  }
+
   let lastSave = -Infinity;
   const pendingDumps = new Map(); // record name -> { finish, fallback }
   function save(reason) {
@@ -444,7 +452,10 @@ const AD_UI_SELECTORS = ['[data-a-target="video-ad-label"]', '[data-a-target="vi
         classes: state.classes,
         masters: state.masters,
         breaks: state.breaks,
-        breakEnds: state.breakEnds,
+        // a break whose window is still open gets what there is so far, marked partial: its own record is written 20 s
+        // after it and the window closes at 30 (2026-11-05, the preroll of zeling came without them); the timer below
+        // completes it for any later record
+        breakEnds: state.breakEnds.map((b) => (b.samples ? b : { ...b, samples: breakSamples(b), samplesPartial: true })),
         events: state.events,
         blankUris: state.blankUris,
         csaiBlocked: state.csaiBlocked,
@@ -552,8 +563,7 @@ const AD_UI_SELECTORS = ['[data-a-target="video-ad-label"]', '[data-a-target="vi
           // the break's own samples, so a record written long after it (a clean break makes none) still carries what
           // the viewer saw: 2026-11-04, two clean breaks of esportmaniacos read from a record 20 min later had none
           setTimeout(() => {
-            const from = info.at - BREAK_SAMPLES_BEFORE_MS, to = (info.endedAt || info.at) + BREAK_SAMPLES_AFTER_MS;
-            info.samples = state.samples.filter((s) => s.at >= from && s.at <= to);
+            info.samples = breakSamples(info);
           }, Math.max(0, (info.endedAt || Date.now()) + BREAK_SAMPLES_AFTER_MS - Date.now()));
           setTimeout(() => {
             const why = breakFlaws(info);
