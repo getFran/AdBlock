@@ -52,7 +52,10 @@ for (const file of files) {
     const own = b.samples && b.samples.length ? b.samples : null;
     const partial = own && b.samplesPartial;
     const samples = own || (r.samples || []).filter((s) => s.at >= w0 && s.at <= w1);
-    const covered = own ? own[0].at <= w0 : r.samples && r.samples.length && r.samples[0].at <= w0;
+    // the first sample at or after the window start, so covered allows one sampling period (until 2026-11-05 a
+    // break's own samples, filtered from w0, always read uncovered)
+    const first = own ? own[0].at : r.samples && r.samples.length ? r.samples[0].at : Infinity;
+    const covered = first <= w0 + 1500;
     // stalls: consecutive visible, unpaused samples whose clock (or decoded frames, with the clock moving) does not advance
     let clockRun = 0, clockMax = 0, picRun = 0, picMax = 0, paused = 0, lowReady = 0, adUi = 0, hidden = 0, errs = 0, videos = 0;
     for (let i = 1; i < samples.length; i++) {

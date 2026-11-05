@@ -347,7 +347,19 @@ espera siguen sin ejercitarse en vivo. **Ese registro lo leyó mal `npm run reco
 con la calidad con que empezó el corte (360p) y el player ya iba a 1080p60; desde el 5 cada entrada de `backups` lleva la
 calidad del player en ese momento (`player`), la cadena sale `autoplay@360p for 1080p60` y `breakFlaws` cuenta con ella.
 Y el registro de un corte nunca llevaba sus propias `samples` (se adjuntan a los 30 s del fin y el registro cae a los 20):
-desde el 5 van cortadas en el momento de guardar, con `samplesPartial: true`. **Cuatro midrolls más el 30 en esportmaniacos**
+desde el 5 van cortadas en el momento de guardar, con `samplesPartial: true`. **Catorce midrolls más ese mismo día 5**
+(zeling ×11 y reventxz ×3, 1080p60; la pestaña de zeling desde las 09:30Z con el build de `1f9ae0a`): 0 reinicios, 0 UI de
+anuncio, 0 parones de reloj o imagen (solo un buffering de menos de 1 s al cambiar de fuente), diez limpios del todo. En
+los otros cuatro, todos de zeling (09:08, 09:34, 10:25 y 11:22Z, pod=1 y pod=2), el backup en uso **anunció su propio
+corte entre 17 y 23 s después de empezar el de la página** y en la ronda siguiente los cinco tipos web venían con anuncio:
+tres `held` (0,3 / 1,2 / 2,3 s) y luego `autoplay` 360p hasta que acabó el corte de la página, con el worker probando un
+tipo web cada 2 s y todos `ads@1080p60`. Coste: **48, 32 y 20 s a 360p** (el cuarto con la pestaña en segundo plano y el
+player ya en 360p). Es el caso sin palanca del 24, ahora también con un solo pod: la cadena ya hace lo único que puede.
+**Para leer registros de una pestaña en segundo plano:** el player de Twitch baja solo a 360p (reventxz 09:19Z, 30 s a
+360p con `hidden=35`; zeling desde las 10:46Z), Chrome deja de decodificar (fotogramas constantes con el reloj corriendo) y
+el muestreador cae a 1-2 muestras por minuto (`samples=1-2`, `hidden`): nada de eso es un parón ni un `offQuality`. Esa
+tanda verificó además la ventana de muestras por corte (los limpios traen duración + 35 muestras) y las cortadas al guardar
+(`(cut at the save)`). **Cuatro midrolls más el 30 en esportmaniacos**
 (1080p60, 1.0.3), que es el canal del desastre del 16: 62, 96, 59 y 130 s, los cuatro intercambiados a 1080p60 con
 **0 `offQuality`, 0 reinicios, 0 UI de anuncio y 0 merges o blancos**. Tres llevaron `held` y solo uno se notó, y eso
 es lo que los separa: con un `held` suelto (1,6 s en el de pod=3, 1,45 s en el de 130 s) el espectador no vio nada,
