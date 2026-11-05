@@ -15,12 +15,12 @@ hacer él va marcado **(Fran)**.
 
 ## Pendiente a 2026-11-05
 
-1. **(Fran) Recargar la extensión en `chrome://extensions` y F5 en la pestaña de Twitch.** El `dist/` del 2026-11-05
-   (commit del preroll de zeling) añade `player` a cada entrada de `backups` del corte y corta las `samples` del corte al
-   guardar. Al recargar una extensión sin empaquetar `onInstalled` llega con `reason: update` y el service worker solo
-   recarga las pestañas en `install`: una pestaña abierta de antes sigue con el `page.js` viejo. Lo demuestra un registro
-   cuyo último `breakEnds[]` traiga `samplesPartial: true` o cuyas entradas de `backups` traigan `player`. (Resuelto el
-   punto del día 4: el registro del 5 ya salió con el build del `496fd56`, se ve en que pasa de los 1,2 MB del tope viejo.)
+1. **(Fran) F5 en la pestaña de Twitch que tuviera abierta.** La extensión se recargó el 2026-11-05 por la mañana con el
+   `dist/` del commit `1f9ae0a` (`player` en cada entrada de `backups` del corte y `samples` del corte cortadas al guardar).
+   Al recargar una extensión sin empaquetar `onInstalled` llega con `reason: update` y el service worker solo recarga las
+   pestañas en `install`: una pestaña abierta de antes sigue con el `page.js` viejo. Lo demuestra un registro cuyo último
+   `breakEnds[]` traiga `samplesPartial: true` o cuyas entradas de `backups` traigan `player`. (Resuelto el punto del día
+   4: el registro del 5 ya salió con el build del `496fd56`, se ve en que pasa de los 1,2 MB del tope viejo.)
 
 2. **Verificar la ventana de muestras por corte** (`496fd56`, sin verla aún en un registro). Hace falta un registro escrito
    **después** de al menos un corte limpio en la misma pestaña: o cae solo por un corte con pega (esportmaniacos los tiene
