@@ -15,14 +15,8 @@ hacer él va marcado **(Fran)**.
 
 ## Pendiente a 2026-11-12
 
-0. **(Fran) Recargar la extensión en `chrome://extensions`** con el `dist/` de la 1.0.6 (listas del lunes 2026-11-09; `git pull && npm run build`
-   hechos el 2026-11-12). Hasta entonces el badge `NEW` sigue y las pestañas de YouTube/Twitch corren las reglas del 2 de noviembre. Se cierra
-   cuando el popup diga 1.0.6 sin badge; una pestaña de Twitch abierta necesita además F5.
-
-Cerrados hoy: la extensión corre el build de `1f9ae0a` (los registros de zeling desde las 09:30Z traen `player` en los
-backups y `(cut at the save)` en el último corte) y la ventana de muestras por corte está verificada (los cortes limpios
-de un registro posterior traen duración + 35 muestras). El cambio de `covered` en `test/twitch-records.mjs` no toca
-`dist/`: no hace falta recargar nada.
+Cerrado el 2026-11-12: la extensión corre el `dist/` de la 1.0.6 (listas del lunes 2026-11-09); Fran la recargó en
+`chrome://extensions` esa misma sesión.
 
 1. **Verificar el recorte nuevo por encima de 8 MB** (`496fd56`, lógica sencilla pero sin ejercitar; el mayor de hoy pesó
    5,6 MB con dos cortes). Solo lo dispara una pestaña con muchos cortes: la del 2 de noviembre llevaba 17 y sin recortar
