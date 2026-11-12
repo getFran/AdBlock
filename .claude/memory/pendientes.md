@@ -1,6 +1,6 @@
 ---
 name: pendientes
-description: Lo que quedó sin verificar o sin documentar al cerrar una sesión; se lee al abrir y se tacha al resolverse. Actualizado el 2026-11-05 a mediodía.
+description: Lo que quedó sin verificar o sin documentar al cerrar una sesión; se lee al abrir y se tacha al resolverse. Actualizado el 2026-11-12.
 metadata:
   type: project
 ---
@@ -13,7 +13,11 @@ extensión, forzar un registro), y la siguiente sesión tiene que saber qué que
 Al cerrarlo, quitarlo de aquí (si deja lección, va a su memoria o al `CLAUDE.md`) y commitear. Lo que Fran tiene que
 hacer él va marcado **(Fran)**.
 
-## Pendiente a 2026-11-05 (mediodía)
+## Pendiente a 2026-11-12
+
+0. **(Fran) Recargar la extensión en `chrome://extensions`** con el `dist/` de la 1.0.6 (listas del lunes 2026-11-09; `git pull && npm run build`
+   hechos el 2026-11-12). Hasta entonces el badge `NEW` sigue y las pestañas de YouTube/Twitch corren las reglas del 2 de noviembre. Se cierra
+   cuando el popup diga 1.0.6 sin badge; una pestaña de Twitch abierta necesita además F5.
 
 Cerrados hoy: la extensión corre el build de `1f9ae0a` (los registros de zeling desde las 09:30Z traen `player` en los
 backups y `(cut at the save)` en el último corte) y la ventana de muestras por corte está verificada (los cortes limpios
