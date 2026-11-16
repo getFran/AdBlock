@@ -1,4 +1,4 @@
-! YouTube rules of the live AdGuard Base filter (version 2.5.3.27, updated 2026-11-09T14:08:22+00:00), vendored on 2026-11-09T16:37:00.823Z from https://filters.adtidy.org/extension/chromium-mv3/filters/2.txt
+! YouTube rules of the live AdGuard Base filter (version 2.5.4.93, updated 2026-11-16T14:18:35+00:00), vendored on 2026-11-16T16:03:41.890Z from https://filters.adtidy.org/extension/chromium-mv3/filters/2.txt
 ! Only the cosmetic and JS rules whose domains name a YouTube host; the build swaps them in for the npm package's (build.mjs overlayYoutube).
 ! Refresh with: npm run vendor
 youtube.com#@##player-ads
@@ -43,7 +43,6 @@ youtube.com###description-inner > ytd-merch-shelf-renderer > #main.ytd-merch-she
 youtube.com###shopping-timely-shelf
 youtube.com###shorts-inner-container > .ytd-shorts:has(> .ytd-reel-video-renderer > ytd-ad-slot-renderer)
 youtube.com###sticker-layer
-youtube.com##.ytReelMetapanelViewModelHost > .ytReelMetapanelViewModelMetapanelItem > .ytShortsSuggestedActionViewModelStaticHost
 youtube.com##.ytd-section-list-renderer > .ytd-item-section-renderer > ytd-search-pyv-renderer.ytd-item-section-renderer
 youtube.com##.ytd-two-column-browse-results-renderer > ytd-rich-grid-renderer > #masthead-ad.ytd-rich-grid-renderer
 youtube.com##.ytd-watch-flexy > .ytd-watch-next-secondary-results-renderer > ytd-ad-slot-renderer.ytd-watch-next-secondary-results-renderer
