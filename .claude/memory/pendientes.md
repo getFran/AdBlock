@@ -1,6 +1,6 @@
 ---
 name: pendientes
-description: Lo que quedó sin verificar o sin documentar al cerrar una sesión; se lee al abrir y se tacha al resolverse. Actualizado el 2026-11-12.
+description: Lo que quedó sin verificar o sin documentar al cerrar una sesión; se lee al abrir y se tacha al resolverse. Actualizado el 2026-11-19.
 metadata:
   type: project
 ---
@@ -13,10 +13,9 @@ extensión, forzar un registro), y la siguiente sesión tiene que saber qué que
 Al cerrarlo, quitarlo de aquí (si deja lección, va a su memoria o al `CLAUDE.md`) y commitear. Lo que Fran tiene que
 hacer él va marcado **(Fran)**.
 
-## Pendiente a 2026-11-12
+## Pendiente a 2026-11-19
 
-Cerrado el 2026-11-12: la extensión corre el `dist/` de la 1.0.6 (listas del lunes 2026-11-09); Fran la recargó en
-`chrome://extensions` esa misma sesión.
+0. **(Fran) Recargar la extensión en `chrome://extensions`** con el `dist/` de la 1.0.7 (listas del lunes 2026-11-16; `git pull && npm run build` hecho el 2026-11-19, `npm test` y `npm run smoke` en verde). Una pestaña de Twitch que ya estuviera abierta necesita además F5. Se cierra cuando el popup diga 1.0.7 y el badge `NEW` desaparezca.
 
 1. **Verificar el recorte nuevo por encima de 8 MB** (`496fd56`, lógica sencilla pero sin ejercitar; el mayor de hoy pesó
    5,6 MB con dos cortes). Solo lo dispara una pestaña con muchos cortes: la del 2 de noviembre llevaba 17 y sin recortar
