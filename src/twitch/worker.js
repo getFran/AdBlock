@@ -86,6 +86,10 @@
   const PAGE_GQL_TIMEOUT_MS = 5000;
   const MAIN_SOURCE = 'page';
   const SEQUENCE_TOLERANCE = 0.05; // sequence.ts: PROGRAM-DATE-TIME jitter, in segments
+  // F-24 is for numbers that never come. In Twitch's own numbering (LIVE-SEQUENCE, below) a backup can only read a few
+  // numbers below the last delivery: the page's two prefetch lines and one poll of jitter, which the live edge covers
+  // within two polls while the player holds what it prefetched. A step back that small is not restarted
+  const SEQUENCE_SLACK = 3;
 
   // --- blank segment (F-14) --------------------------------------------------------------------------
   // BLANK_MP4 is copied verbatim from TwitchAdSolutions' vaft script, vaft/vaft-ublock-origin.js (hookWorkerFetch,
@@ -151,6 +155,7 @@
     delivered: null, // F-24: { source, newest } of the last playlist given to the player
     lastDelivered: null, // the text of that playlist, the reference when the page's own playlist comes back
     pageShift: 0, // what the page's own MEDIA-SEQUENCE gets so that it continues the last delivery after a break, until the next master
+    pageLive: false, // the page's playlists carry EXT-X-TWITCH-LIVE-SEQUENCE: pageShift comes from it and every backup numbers alike
     lastBackup: null, // { text, at, quality, source } of the last same-quality backup delivered, for HOLD_MS
     adState: 'idle', // ad-break.ts: idle | ad | recovering
     endedAt: 0,
@@ -447,6 +452,29 @@
     const line = lines.find((raw) => raw.trim().startsWith(MEDIA_SEQUENCE));
     const value = line ? Number(line.trim().slice(MEDIA_SEQUENCE.length)) : NaN;
     return Number.isInteger(value) ? value : null;
+  }
+
+  // EXT-X-TWITCH-LIVE-SEQUENCE: the number of the window's first segment in the count of the live stream itself, the
+  // same on every token (a backup's MEDIA-SEQUENCE equals it; 138 of 138 on 2026-11-20). The page's MEDIA-SEQUENCE
+  // counts from its own session and, since 2026-11-19, grows by the pod at every stitched break while its
+  // PROGRAM-DATE-TIME runs ahead of the clock by the pod's length (Twitch lists the content past the pod during it, so
+  // its player resumes where the ad cut in): numbered by date-time, the page came back after a break ~26 s behind the
+  // last delivery, so the player re-played what the backups had just shown, and the backups of the next break read 6
+  // to 25 numbers behind and F-24 restarted the player (16 of 42 midrolls from the 19th to the 21st, none before)
+  const LIVE_SEQUENCE = '#EXT-X-TWITCH-LIVE-SEQUENCE:';
+
+  function liveSequence(lines) {
+    const line = lines.find((raw) => raw.trim().startsWith(LIVE_SEQUENCE));
+    const value = line ? Number(line.trim().slice(LIVE_SEQUENCE.length)) : NaN;
+    return Number.isInteger(value) ? value : null;
+  }
+
+  // what to add to a playlist's MEDIA-SEQUENCE so that its numbers are the live stream's own; null without the tag
+  function liveShift(text) {
+    const lines = text.split('\n');
+    const live = liveSequence(lines);
+    const first = mediaSequence(lines);
+    return live != null && first != null ? live - first : null;
   }
 
   // F-24: the last number the player can fetch from a playlist, prefetch URIs included
@@ -906,8 +934,11 @@
     const key = withoutQuery(variant.url);
     let shift = state.sequenceShifts.get(key);
     if (shift == null) {
-      const reference = state.pageSequence || sequenceReference(main, true);
-      const computed = reference ? sequenceShift(backup, reference) : null;
+      // with the page numbered by LIVE-SEQUENCE, a backup that carries it needs no date-time (its own shift is 0 on
+      // every token seen); the date-time alignment stays for playlists without the tag
+      const live = state.pageLive ? liveShift(backup) : null;
+      const reference = live == null ? state.pageSequence || sequenceReference(main, true) : null;
+      const computed = live != null ? live : reference ? sequenceShift(backup, reference) : null;
       if (computed == null) return { text: backup, shift: null };
       shift = computed;
       state.sequenceShifts.set(key, shift);
@@ -1034,6 +1065,13 @@
     state.delivered = { source: state.source, newest };
     state.lastDelivered = text;
     if (!previous || previous.source === state.source || newest >= previous.newest) return;
+    if (previous.newest - newest <= SEQUENCE_SLACK) {
+      // the page's prefetch lines and a poll of jitter: the live edge lists these numbers within two polls and the
+      // player holds what it prefetched meanwhile; a restart would flush that buffer for nothing
+      log('sequence back ' + previous.newest + ' -> ' + newest + ' at a change of source (' + previous.source.slice(-24) + ' -> ' + state.source.slice(-24) + '): within the prefetch slack, not restarted');
+      emit('sequenceBack', { from: previous.newest, to: newest });
+      return;
+    }
     log('sequence back ' + previous.newest + ' -> ' + newest + ' at a change of source (' + previous.source.slice(-24) + ' -> ' + state.source.slice(-24) + ')');
     emit('sequenceRestart', { from: previous.newest, to: newest });
     pauseAndPlay('sequence back');
@@ -1042,10 +1080,29 @@
   async function onFetch(text, url) {
     state.source = MAIN_SOURCE;
     // the page's numbers as the player knows them: every backup of this break is aligned to these (F-23)
+    followLiveSequence(text);
     let out = await playlistFor(shiftSequence(text, state.pageShift), url);
-    if (state.source === MAIN_SOURCE) out = rebasePage(out);
+    if (state.source === MAIN_SOURCE && !state.pageLive) out = rebasePage(out);
     followSequence(out);
     return out;
+  }
+
+  // the page's own numbers from EXT-X-TWITCH-LIVE-SEQUENCE: exact, and the same count the backups use, so the page
+  // comes back after a break on the segment that continues the delivery whatever its date-times say. Read from every
+  // page playlist without ad segments: during a stitched break the window is pinned at the pod (its MEDIA-SEQUENCE
+  // stops while the tag goes on), and the shift read before it still gives the pod's first number the one of the
+  // segment it replaced, which is what the merge and the blank segments need
+  function followLiveSequence(text) {
+    const shift = liveShift(text);
+    if (shift == null) return;
+    state.pageLive = true;
+    if (detectAds(text).class === 'SSAI') return;
+    if (shift === state.pageShift) return;
+    const extra = shift - state.pageShift;
+    state.pageShift = shift;
+    if (state.pageSequence) state.pageSequence = { ...state.pageSequence, sequence: state.pageSequence.sequence + extra };
+    log('page playlist numbered ' + (extra > 0 ? '+' : '') + extra + ' by LIVE-SEQUENCE (newest ' + newestNumber(text) + ' -> ' + (newestNumber(text) + shift) + '; offset now ' + (shift > 0 ? '+' : '') + shift + ')');
+    emit('pageRebased', { shift: extra, total: shift, live: true });
   }
 
   // the page's own playlist after a delivery from another source: its numbers get what continues that delivery, kept
@@ -1250,6 +1307,7 @@
       state.delivered = null;
       state.lastDelivered = null;
       state.pageShift = 0;
+      state.pageLive = false;
       prewarmBackups('channel load');
     } catch (e) {
       log('master handling failed: ' + ((e && e.stack) || e));
@@ -1323,7 +1381,7 @@
   };
 
   // the pure pieces, for test/twitch-playlists.mjs
-  if (!RELEASE) scope.__adblockTwitchWorker = { detectAds, readSegments, isCleanBackup, mergeWithBackups, blankAds, stripAdDateranges, newestNumber, sequenceReference, sequenceShift, shiftSequence, pageRebase, parseVariants, pickVariant, summarize, awaitBackupMasters, state };
+  if (!RELEASE) scope.__adblockTwitchWorker = { detectAds, readSegments, isCleanBackup, mergeWithBackups, blankAds, stripAdDateranges, newestNumber, sequenceReference, sequenceShift, shiftSequence, pageRebase, liveSequence, liveShift, alignSequence, followLiveSequence, followSequence, onFetch, parseVariants, pickVariant, summarize, awaitBackupMasters, state };
 
   log('worker hook installed');
 })(self);

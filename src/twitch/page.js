@@ -395,6 +395,9 @@ const AD_UI_SELECTORS = ['[data-a-target="video-ad-label"]', '[data-a-target="vi
     if (off) why.push(off + ' off quality');
     if (info.polls < 2 && info.durationMs > 10000) why.push(info.polls + ' poll(s) in ' + Math.round(info.durationMs / 1000) + ' s');
     if (state.restarts.some((r) => r.at >= info.at)) why.push('restart');
+    // the worker's own restart (F-24, a playlist numbered below the last delivery): until 2026-11-21 it left no record
+    // of its own, and 16 midrolls restarted the player at their first poll without anyone reading it
+    if (state.events.some((e) => e.type === 'sequenceRestart' && e.at >= info.at)) why.push('sequence restart');
     const limit = STALL_MS / 1000;
     const longest = { still: 0, dark: 0 };
     let run = { still: 0, dark: 0 };

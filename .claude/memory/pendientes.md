@@ -1,6 +1,6 @@
 ---
 name: pendientes
-description: Lo que quedó sin verificar o sin documentar al cerrar una sesión; se lee al abrir y se tacha al resolverse. Actualizado el 2026-11-19.
+description: Lo que quedó sin verificar o sin documentar al cerrar una sesión; se lee al abrir y se tacha al resolverse. Actualizado el 2026-11-21.
 metadata:
   type: project
 ---
@@ -13,9 +13,21 @@ extensión, forzar un registro), y la siguiente sesión tiene que saber qué que
 Al cerrarlo, quitarlo de aquí (si deja lección, va a su memoria o al `CLAUDE.md`) y commitear. Lo que Fran tiene que
 hacer él va marcado **(Fran)**.
 
-## Pendiente a 2026-11-19
+## Pendiente a 2026-11-21
 
-0. **(Fran) Recargar la extensión en `chrome://extensions`** con el `dist/` de la 1.0.7 (listas del lunes 2026-11-16; `git pull && npm run build` hecho el 2026-11-19, `npm test` y `npm run smoke` en verde). Una pestaña de Twitch que ya estuviera abierta necesita además F5. Se cierra cuando el popup diga 1.0.7 y el badge `NEW` desaparezca.
+0. **(Fran) Recargar la extensión en `chrome://extensions`** con el `dist/` de la 1.0.8 (`npm run build` hecho el
+   2026-11-21 con la numeración por `LIVE-SEQUENCE`; `npm test`, `npm run smoke` y `npm run probe` en verde). Una
+   pestaña de Twitch que ya estuviera abierta necesita además F5. Se cierra cuando el popup diga 1.0.8. Hasta entonces
+   el "desync" tras cada midroll sigue.
+
+0b. **El primer midroll real con la 1.0.8.** El 21 `npm run verify -- twitch --seconds=900` sobre cinco canales no
+   cazó ninguno en la ventana (o se cortó antes; mirar el final de esta entrada cuando se actualice). Se cierra con
+   un registro (o el `verify`) en el que: `workerRestarts=0` en el primer poll (nada de `t` a 0 en las muestras al
+   empezar el corte), `pageRebased` con `live: true` y shift negativo (−6 a −25) al acabar, y `t` sin pausa ni salto en
+   los 10 s siguientes al fin del corte; y, lo que de verdad cuenta, que Fran no vea el directo rebobinarse al
+   acabar el anuncio. Si el corte vuelve a dejar registro con `sequence restart`, lo primero es el log del worker en el
+   primer poll (`backup X lists nothing past N`) y comprobar en sus playlists que `LIVE-SEQUENCE` sigue igualando el
+   `MEDIA-SEQUENCE` de los backups.
 
 1. **Verificar el recorte nuevo por encima de 8 MB** (`496fd56`, lógica sencilla pero sin ejercitar; el mayor de hoy pesó
    5,6 MB con dos cortes). Solo lo dispara una pestaña con muchos cortes: la del 2 de noviembre llevaba 17 y sin recortar

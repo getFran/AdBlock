@@ -20,7 +20,7 @@ alcance (carcasa que consume piezas mantenidas por otros), no con otro.
 | Icono | `icons/dogwifhatnike.png` (elección de Fran, 2026-10-15); los `icons/icon-{16,32,48,128}.png` están renderizados y commiteados, el build solo los copia. Para cambiarlo, regenerar los cuatro tamaños (recorte cuadrado centrado) y commitearlos |
 | Repo | `getFran/AdBlock`, **público** desde el 2026-10-18 (Fran: «lo que tú veas mejor»; antes privado). Historial auditado: sin secretos; `.claude/` y este fichero se quedan dentro |
 | Rama | `main` |
-| Versión | `1.0.7` en `package.json` (la publicó la Action el lunes 2026-11-16 solo con listas nuevas: `@adguard/scriptlets` 2.6.0, AdGuard retiró del Base una regla cosmética de Shorts, uAssets cambió los marcadores del `rpnt` grande que el build descarta, y `youtube.js` sigue en 36 reglas; aquí se cargó con `git pull && npm run build` el 2026-11-19; la 1.0.6 la publicó la Action el lunes 2026-11-09 solo con listas nuevas: los dos scriptlets grandes de YouTube del Base de AdGuard saltan ahora los `playbackContext` que ya traen `vis` o `lactMilliseconds`, uBO comentó una de las dos reglas del snackbar y `youtube.js` sigue en 36 reglas; aquí se cargó con `git pull && npm run build` el 2026-11-12; la 1.0.5 el lunes 2026-11-02 solo con listas nuevas: una regla de YouTube del Base de AdGuard y la pasada de uAssets, que añade un `json-prune-fetch-response` sobre `/resolve_url` y deja `youtube.js` en 36 reglas; la 1.0.4 el 2026-10-31 con `scripts/publish.mjs` desde la sesión, en bypass: el preroll frío que la 1.0.3 dejó 5 min en negro; la 1.0.3 la publicó la Action el lunes 2026-10-26 con las listas nuevas y la espera a los tokens; la 1.0.2 el 2026-10-22 con el `pageRebase`, verificado antes en cuatro cortes reales de caedrel247; la 1.0.1 el 2026-10-21 con la recarga de pestañas al instalar y el reintento de `readScript`; la 1.0.0 el 2026-10-19); la Action construye la del tag (`EXT_VERSION`) |
+| Versión | `1.0.8` en `package.json` (publicada el 2026-11-21 con `scripts/publish.mjs` desde la sesión, en bypass: la numeración por `EXT-X-TWITCH-LIVE-SEQUENCE` que arregla el "desync" tras cada midroll desde que Twitch cambió la playlist del anuncio el 2026-11-19, ver "Decisiones"; la 1.0.7 la publicó la Action el lunes 2026-11-16 solo con listas nuevas: `@adguard/scriptlets` 2.6.0, AdGuard retiró del Base una regla cosmética de Shorts, uAssets cambió los marcadores del `rpnt` grande que el build descarta, y `youtube.js` sigue en 36 reglas; aquí se cargó con `git pull && npm run build` el 2026-11-19; la 1.0.6 la publicó la Action el lunes 2026-11-09 solo con listas nuevas: los dos scriptlets grandes de YouTube del Base de AdGuard saltan ahora los `playbackContext` que ya traen `vis` o `lactMilliseconds`, uBO comentó una de las dos reglas del snackbar y `youtube.js` sigue en 36 reglas; aquí se cargó con `git pull && npm run build` el 2026-11-12; la 1.0.5 el lunes 2026-11-02 solo con listas nuevas: una regla de YouTube del Base de AdGuard y la pasada de uAssets, que añade un `json-prune-fetch-response` sobre `/resolve_url` y deja `youtube.js` en 36 reglas; la 1.0.4 el 2026-10-31 con `scripts/publish.mjs` desde la sesión, en bypass: el preroll frío que la 1.0.3 dejó 5 min en negro; la 1.0.3 la publicó la Action el lunes 2026-10-26 con las listas nuevas y la espera a los tokens; la 1.0.2 el 2026-10-22 con el `pageRebase`, verificado antes en cuatro cortes reales de caedrel247; la 1.0.1 el 2026-10-21 con la recarga de pestañas al instalar y el reintento de `readScript`; la 1.0.0 el 2026-10-19); la Action construye la del tag (`EXT_VERSION`) |
 | Licencia | **GPL-3.0** (`LICENSE`): las listas y scriptlets de AdGuard y uAssets son GPL-3.0; Purple es Apache-2.0 y vaft MIT, atribuidos en `THIRD_PARTY_NOTICES.md`, que va dentro del zip |
 | Despliegue | **GitHub Releases**: `.github/workflows/release.yml` publica `getfran-adblock-<versión>.zip` (carpeta `getfran-adblock/` dentro, nombre fijo para descomprimir encima y conservar el ID) al empujar un tag `v*`, y los lunes si hay listas nuevas. En local, `npm run build` deja `dist/` para "Load unpacked" |
 
@@ -60,7 +60,23 @@ alcance (carcasa que consume piezas mantenidas por otros), no con otro.
   entregado, y ese desplazamiento se mantiene hasta el siguiente master. Motivo: en caedrel247 (segmentos de
   1 s, anuncios de 2 s) la cuenta de la página quedaba 19 números por detrás de los backups tras 76 s de corte
   y el F-24 reiniciaba el player **al final de cada corte** (tres de tres el 2026-10-19). Con segmentos de la
-  misma duración a ambos lados el desplazamiento sale 0 y no cambia nada. **Ni recorte de
+  misma duración a ambos lados el desplazamiento sale 0 y no cambia nada. **Desde la 1.0.8 (2026-11-21) la numeración
+  es la de `EXT-X-TWITCH-LIVE-SEQUENCE`, no la de `PROGRAM-DATE-TIME`:** esa etiqueta es la cuenta del propio directo
+  (el número del primer segmento de la ventana), igual en todos los tokens (en los backups coincide con su
+  `MEDIA-SEQUENCE`, 138 de 138 el 2026-11-20), así que la página se renumera con `LIVE-SEQUENCE − MEDIA-SEQUENCE` en
+  cada poll sin anuncio (`followLiveSequence`; durante un corte la ventana está clavada en el pod y se conserva el
+  desplazamiento anterior) y los backups con el suyo, que es 0. Motivo: **el 2026-11-19 Twitch cambió la playlist del
+  anuncio**: lista el pod entero y, debajo, el contenido en directo con fechas adelantadas lo que dura el pod y números
+  que siguen a los del anuncio (su player retoma donde cortó el anuncio en vez de saltar al directo; un pod de 30 s deja
+  la sesión de la página 14 números y 26 s por delante de la cuenta real, y se acumula por corte: +14, +29, +42 en la
+  pestaña de esportmaniacos del 20). Alineada por fecha, la playlist de la página volvía tras el corte 26 s **por
+  detrás** de lo entregado (el espectador volvía a ver lo que los backups acababan de enseñar: el "desync" que Fran notó,
+  sin parón ni salto en las muestras porque `t` sigue), y en el siguiente corte los backups salían 6-25 números por
+  detrás y el F-24 reiniciaba el player en el primer poll (16 de 42 midrolls del 19 al 21; 0 antes). Con la cuenta de
+  Twitch la vuelta es exacta (`pageRebased` con `live: true`) y el primer backup queda a la par. Y **un retroceso de
+  hasta 3 números al cambiar de fuente ya no reinicia** (`SEQUENCE_SLACK`, evento `sequenceBack`): son las dos líneas
+  prefetch de la página más un poll de desfase, que el directo cubre en dos polls mientras el player tiene en buffer lo
+  que precargó. Memoria `twitch-live-sequence-y-el-cambio-del-19-de-noviembre`. **Ni recorte de
   segmentos ni proxies.** Pause/play solo si hace falta: cuando el número de secuencia retrocede al
   cambiar de fuente (F-24 de Purple; desde el 2026-10-18 solo si no había playlist reciente que repetir) y,
   desde la página, si el vídeo lleva 6 s parado tras el corte (pause/play y, si sigue, reload suave); desde el
@@ -207,7 +223,7 @@ build.mjs        lee build.config.mjs y escribe dist/:
   tipo de backup (prewarm); cada media playlist del player pasa por `playlistFor`: `NONE` → intacta;
   `MARKED_LIVE` (maf-ad o corte anunciado tras el último segmento) → intacta salvo las líneas prefetch
   que apuntan al anuncio, cuyas URIs se responden en blanco; `SSAI` → cadena de backups (el primero
-  solo, el resto en paralelo), playlist entera del primero limpio con `MEDIA-SEQUENCE` desplazado, o
+  solo, el resto en paralelo), playlist entera del primero limpio con `MEDIA-SEQUENCE` en la cuenta de `LIVE-SEQUENCE` (desde la 1.0.8; antes alineado por `PROGRAM-DATE-TIME`), o
   merge + blank. Las `DATERANGE` del anuncio se quitan de lo que se entrega editado (si no, la UI de
   anuncio arranca igual). Las peticiones GQL las ejecuta la página con su `fetch` original y sus
   cabeceras (`Client-Integrity`, `X-Device-Id`, `Authorization`…). Evidencia: consola bajo
@@ -225,7 +241,7 @@ build.mjs        lee build.config.mjs y escribe dist/:
 | `npm run build` | regenera `dist/` (≈1 s), build de desarrollo: registros, diagnóstico, consola |
 | `npm run build:release` | el `dist/` que se reparte: sin nada de eso (`EXT_VERSION=1.2.3` fija la versión) |
 | `npm test` | `test/twitch-playlists.mjs`: las piezas puras del worker, sin navegador |
-| `npm run records -- [--since=YYYY-MM-DD] [--verbose]` | `test/twitch-records.mjs`: resume cada corte de los registros de `Descargas\AdBlock\` (cadena de backups, `held`/`merged`/`blanked`, reinicios, `pageRebased`, y sobre las muestras: parones de reloj o de imagen, anchura, UI de anuncio). Cada registro lleva todos los cortes de su pestaña, cada uno con su ventana de muestras (desde el 2026-11-04; antes solo los 300 s finales de la pestaña, y un corte limpio leído del registro de otro 20 min después salía `NONE in window`): cada corte se lee del primer registro que lo contiene. Es lo primero que se lanza cuando Fran trae registros nuevos |
+| `npm run records -- [--since=YYYY-MM-DD] [--verbose]` | `test/twitch-records.mjs`: resume cada corte de los registros de `Descargas\AdBlock\` (cadena de backups, `held`/`merged`/`blanked`, reinicios del guardián y del worker (`workerRestarts`, el F-24; hasta el 2026-11-21 ni el resumen ni `breakFlaws` los contaban, y 16 midrolls reiniciaron el player sin dejar registro propio), `pageRebased`, y sobre las muestras: parones de reloj o de imagen, anchura, UI de anuncio). Cada registro lleva todos los cortes de su pestaña, cada uno con su ventana de muestras (desde el 2026-11-04; antes solo los 300 s finales de la pestaña, y un corte limpio leído del registro de otro 20 min después salía `NONE in window`): cada corte se lee del primer registro que lo contiene. Es lo primero que se lanza cuando Fran trae registros nuevos |
 | `npm run smoke` | carga `dist/` en el Chromium de Playwright y comprueba manifest, permisos, content scripts, alarma y globales (vale para los dos builds; `ADBLOCK_DIST=<carpeta>` prueba un zip descomprimido) |
 | `npm run probe -- [--twitch=<canal>] [--seconds=90] [--pip] [--navigate] [--race]` | abre un directo con el build de `dist/` (o `ADBLOCK_DIST`) y dice si el hook del worker está activo **sin depender de los globales** (los masters de usher: los tokens de respaldo solo se piden si nuestro worker corre), si el vídeo avanza y si sale la UI de anuncio; `--pip` y `--navigate` ejercitan el picture-in-picture y el mini-player. Es la única forma de probar la release en Twitch |
 | `node test/twitch-ladders.mjs [--twitch=<canal>]` | qué escalera de calidad da cada `player_type` x `platform`, pidiendo un token de cada uno a la vez (sin navegador: PlaybackAccessToken contesta anónimo). Contestó el 2026-10-24 que el techo de 360p es del tipo de player, no de la plataforma. `--watch=<s>` mantiene una sesión abierta y, al empezar un corte, pide todas las combinaciones a la vez; ojo que una sesión nueva puede recibir su propio preroll y confundir la lectura |
@@ -378,7 +394,13 @@ noviembre** (reventxz ×10, elbokeron 1, pausenpaii 2 y esportmaniacos ×18, tod
 `offQuality`, 0 reinicios, 0 UI de anuncio y 0 merges o blancos; doce de los de esportmaniacos con `held` de 1-1,8 s y
 ninguno le costó nada al espectador: la única muestra en pausa de los 31 es un buffering de 0,6 s al arrancar el de las
 15:32Z del día 2 (los cinco backups un número atrás en la primera ronda), 24 s antes de su `held`. Desde el 1 de noviembre
-todos los registros los dispara un `held` de esportmaniacos; los demás canales no dejan ninguno.
+todos los registros los dispara un `held` de esportmaniacos; los demás canales no dejan ninguno. **Del 19 al 21 de
+noviembre, 42 midrolls con la 1.0.7 (teshrak, toadamarillo, esportmaniacos, caedrel, anngirv) con el formato nuevo de
+Twitch:** 0 `offQuality`, 0 UI de anuncio, 0 parones, pero 16 con reinicio del worker en el primer poll (`t` a 0 en las
+muestras, `sequenceRestart` de 6 a 25 números) y, en todos, la vuelta a la página 26-52 s por detrás de lo entregado
+(invisible para las muestras: el reloj sigue; en el de las 15:31Z del 20 el player de Twitch soltó un
+`PlayerRecoverableError Segment`, 2 s en pausa y un salto de +23 s). Fran lo describió el 21 como "mucho desync del
+directo de vez en cuando". Es lo que arregla la 1.0.8; el primer midroll con ella queda por ver (pendientes).
 
 **Al limpiar navegadores de prueba colgados, nunca `taskkill //IM chrome.exe`:** mata el Chrome de
 Fran (memoria `no-matar-chrome-por-nombre-de-imagen` en `Projects`).

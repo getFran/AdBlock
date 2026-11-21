@@ -30,9 +30,10 @@ const iso = (ms) => new Date(ms).toISOString();
 const HOST = 'https://sae12.playlist.ttvnw.net/v1/playlist/';
 const CDN = 'https://video-edge-abc.sae12.abs.hls.ttvnw.net/v1/segment/';
 
-// a live playlist: `count` segments of 2 s from `seq` at `start`, two prefetch lines, the usual DATERANGEs
-function live({ seq, start, count = 14, prefetch = 2, extra = '', dur = 2 }) {
-  const lines = ['#EXTM3U', '#EXT-X-VERSION:3', '#EXT-X-TARGETDURATION:6', '#EXT-X-MEDIA-SEQUENCE:' + seq, '#EXT-X-TWITCH-LIVE-SEQUENCE:' + seq];
+// a live playlist: `count` segments of 2 s from `seq` at `start`, two prefetch lines, the usual DATERANGEs; `liveSeq`
+// is Twitch's own count of the window's first segment (EXT-X-TWITCH-LIVE-SEQUENCE), the same as `seq` on a fresh token
+function live({ seq, liveSeq = seq, start, count = 14, prefetch = 2, extra = '', dur = 2 }) {
+  const lines = ['#EXTM3U', '#EXT-X-VERSION:3', '#EXT-X-TARGETDURATION:6', '#EXT-X-MEDIA-SEQUENCE:' + seq, '#EXT-X-TWITCH-LIVE-SEQUENCE:' + liveSeq];
   lines.push('#EXT-X-DATERANGE:ID="source-1",CLASS="twitch-stream-source",START-DATE="' + iso(start) + '",END-ON-NEXT="YES",X-TV-TWITCH-STREAM-SOURCE="live"');
   lines.push('#EXT-X-DATERANGE:ID="trigger-1",CLASS="twitch-trigger",START-DATE="' + iso(start) + '",END-ON-NEXT="YES",X-TV-TWITCH-TRIGGER-URL="https://video-weaver.example/trigger"');
   for (let i = 0; i < count; i++) {
@@ -223,6 +224,117 @@ check('summarize reports the roll type and the ad segment count for the logs', (
   S.pendingAccess.clear();
   checks++;
   console.log("ok  the wait for the tokens in flight ends with every token settled, with autoplay's master, or at the cap");
+}
+
+// Twitch's own count: since 2026-11-19 the page's MEDIA-SEQUENCE grows by the pod at every stitched break and its
+// PROGRAM-DATE-TIME runs ahead of the clock by the pod's length (esportmaniacos, 2026-11-20 14:51: a 30 s pod of 16
+// numbers over 2 segments of content; the page came back as 4384..4398 dated 14:51:50..14:52:18 at 14:51:54, with
+// LIVE-SEQUENCE 4370, while the last backup delivered ended at 4383 dated 14:51:50). EXT-X-TWITCH-LIVE-SEQUENCE is
+// the same count on every token (a backup's MEDIA-SEQUENCE equals it), so it numbers the page exactly
+check('live sequence: a backup numbers as the stream, the page after a pod 14 above it, nothing without the tag', () => {
+  assert.equal(W.liveShift(live({ seq: 4368, start: t0 , count: 15, prefetch: 0 })), 0);
+  assert.equal(W.liveShift(live({ seq: 4384, liveSeq: 4370, start: t0 + 32261, count: 15, prefetch: 0 })), -14);
+  assert.equal(W.liveShift('#EXTM3U\n#EXT-X-MEDIA-SEQUENCE:5\n'), null);
+  assert.equal(W.liveSequence(['#EXT-X-TWITCH-LIVE-SEQUENCE:12']), 12);
+});
+
+{
+  const S = W.state;
+  const posted = [];
+  const PAGE = 'https://eus23.playlist.ttvnw.net/v1/playlist/page.m3u8';
+  const BACKUP = 'https://eus23.playlist.ttvnw.net/v1/playlist/backup-site.m3u8';
+  const reset = () => {
+    S.channel = 'esportmaniacos';
+    S.pageShift = 0;
+    S.pageLive = false;
+    S.pageSequence = null;
+    S.sequenceShifts.clear();
+    S.delivered = null;
+    S.lastDelivered = null;
+    S.lastBackup = null;
+    S.break = null;
+    S.adState = 'idle';
+    posted.length = 0;
+  };
+  scope.postMessage = (message) => posted.push(message);
+  const restarts = () => posted.filter((m) => m.adblock === 'pause').length;
+
+  // the page before the pod (14:51:18.031 is its 4367 = 4352 + 15), the last backup delivered during it, the page back
+  reset();
+  const T = Date.parse('2026-11-20T14:50:48.031Z');
+  const before = await W.onFetch(live({ seq: 4352, start: T, count: 15, prefetch: 0 }), PAGE);
+  assert.ok(before.includes('#EXT-X-MEDIA-SEQUENCE:4352'), 'a page that already counts as the stream keeps its numbers');
+  assert.equal(S.pageLive, true);
+  assert.deepEqual(S.delivered, { source: 'page', newest: 4366 });
+  const delivered = live({ seq: 4369, start: T + 34000, count: 15, prefetch: 0 }); // frontpage at 14:51:52.9: 4369..4383, 14:51:22..14:51:50
+  S.source = BACKUP;
+  S.delivered = { source: BACKUP, newest: 4383 };
+  S.lastDelivered = delivered;
+  // the page at 14:51:54.8: numbered 4384..4398 by its own count, dated 14:51:50.261..14:52:18.261, LIVE-SEQUENCE 4370
+  const back = live({ seq: 4384, liveSeq: 4370, start: T + 62230, count: 15, prefetch: 0 });
+  assert.equal(W.pageRebase(back, delivered), 0, 'by date-time the page looks to continue the delivery: that is the 26 s re-play of the 19th to the 21st');
+  const out = await W.onFetch(back, PAGE);
+  assert.ok(out.includes('#EXT-X-MEDIA-SEQUENCE:4370'), 'numbered by LIVE-SEQUENCE: ' + out.split('\n')[3]);
+  assert.equal(S.pageShift, -14);
+  assert.equal(W.newestNumber(out), 4384, 'its newest is the segment after the last one delivered');
+  assert.deepEqual(S.delivered, { source: 'page', newest: 4384 });
+  assert.equal(restarts(), 0, 'no restart on the way back');
+  assert.ok(posted.some((m) => m.adblock === 'event' && m.event.type === 'pageRebased' && m.event.shift === -14 && m.event.live === true), 'the rebase is reported with its source');
+  // the next page poll keeps the count without a new report
+  posted.length = 0;
+  const next = await W.onFetch(live({ seq: 4385, liveSeq: 4371, start: T + 64230, count: 15, prefetch: 0 }), PAGE);
+  assert.ok(next.includes('#EXT-X-MEDIA-SEQUENCE:4371'));
+  assert.equal(posted.filter((m) => m.adblock === 'event' && m.event.type === 'pageRebased').length, 0);
+  checks++;
+  console.log('ok  after a pod the page comes back numbered by LIVE-SEQUENCE and continues the delivery, not 26 s behind it');
+
+  // the pod's own window keeps the shift read before it: its first number is the one of the segment it replaced
+  const pod = stitched({ seq: 4367, start: T + 30000, liveCount: 0, ads: 3 }).replace('#EXT-X-TWITCH-LIVE-SEQUENCE:4367', '#EXT-X-TWITCH-LIVE-SEQUENCE:4369');
+  S.pageShift = -14;
+  W.followLiveSequence(pod);
+  assert.equal(S.pageShift, -14, 'a window pinned at the pod does not move the page shift');
+  checks++;
+  console.log("ok  a stitched window does not move the page's shift");
+
+  // the next break, 40 minutes on (15:31:18): the page's dates run 24 s ahead of the clock; the backup polled at
+  // 15:31:18.75 lists 5552..5566 (its 5566 dated 15:31:16.031) and the page's last content segment is the same one.
+  // By date-time the backup read 12 behind the page (shift +1, newest 5567 against 5579) and F-24 restarted the player
+  reset();
+  const T2 = Date.parse('2026-11-20T15:30:48.031Z');
+  const page = await W.onFetch(live({ seq: 5566, liveSeq: 5552, start: T2 + 24000, count: 15, prefetch: 0 }), PAGE);
+  assert.equal(W.newestNumber(page), 5566, "the page's newest in the stream's own count");
+  const backup = live({ seq: 5552, start: T2, count: 15, prefetch: 0 });
+  const aligned = W.alignSequence(backup, { url: BACKUP + '?token=1' }, page);
+  assert.equal(aligned.shift, 0);
+  assert.equal(W.newestNumber(aligned.text), 5566, 'the backup lists the same newest segment: parity, no restart');
+  S.pageLive = false;
+  S.sequenceShifts.clear();
+  S.pageSequence = { sequence: 5579, time: T2 + 24000 + 28000, duration: 2 }; // what the date-time path had: 5579 dated 15:31:40
+  const dated = W.alignSequence(backup, { url: BACKUP + '?token=2' }, page);
+  assert.equal(dated.shift, 1, 'the date-time alignment of the 19th to the 21st');
+  assert.equal(W.newestNumber(dated.text), 5567, '12 behind: what restarted the player');
+  checks++;
+  console.log("ok  at the next break's first poll the backup numbers level with the page by LIVE-SEQUENCE");
+
+  // F-24 with slack: the page's two prefetch numbers and a poll of jitter are not a restart; an unrelated count is
+  reset();
+  S.source = 'page';
+  S.delivered = { source: 'page', newest: 5568 };
+  S.source = BACKUP;
+  W.followSequence(live({ seq: 5552, start: T2, count: 15, prefetch: 0 })); // newest 5566, two below
+  assert.equal(restarts(), 0, 'two numbers back: within the slack');
+  assert.deepEqual(S.delivered, { source: BACKUP, newest: 5566 });
+  assert.ok(posted.some((m) => m.adblock === 'event' && m.event.type === 'sequenceBack' && m.event.from === 5568 && m.event.to === 5566));
+  S.source = 'page';
+  S.delivered = { source: 'page', newest: 5570 };
+  S.source = BACKUP;
+  W.followSequence(live({ seq: 5552, start: T2, count: 15, prefetch: 0 })); // newest 5566, four below
+  assert.equal(restarts(), 1, 'four numbers back: restarted as before');
+  assert.ok(posted.some((m) => m.adblock === 'event' && m.event.type === 'sequenceRestart'));
+  reset();
+  scope.postMessage = () => {};
+  checks++;
+  console.log('ok  a step back within the prefetch slack is not restarted, a larger one is');
 }
 
 console.log(checks + ' checks passed');

@@ -76,10 +76,15 @@ for (const file of files) {
     const restarts = (r.restarts || []).filter((x) => x.at >= b.at && x.at <= end + 60000);
     const dur = b.durationMs != null ? Math.round(b.durationMs / 1000) : '?';
     console.log(`\n--- ${hhmmss(b.at)}Z ${b.channel} ${b.quality} ${b.rollType} pod=${b.podLength} dur=${dur}s adSeg<=${maxAd} resumed=${b.resumed}`);
-    console.log(`    polls=${b.polls} swapped=${b.swapped} held=${b.held} merged=${b.merged} blanked=${b.blanked} passed=${b.passed || 0} blankListed=${b.blankListed} blankAnswered=${b.blankAnswered}  shifts=${shifts.join('/')}  offQuality=${offQuality}  sourceChanges=${chain.length - 1}`);
+    // the worker's F-24 restarts (a playlist numbered below the last delivery) and the small steps back it lets pass
+    // since 2026-11-21: 16 midrolls from the 19th to the 21st restarted the player at their first poll and the summary
+    // did not say so (the page's `restarts` are its own guardian's)
+    const seqRestarts = counts.sequenceRestart || 0;
+    const seqBacks = counts.sequenceBack || 0;
+    console.log(`    polls=${b.polls} swapped=${b.swapped} held=${b.held} merged=${b.merged} blanked=${b.blanked} passed=${b.passed || 0} blankListed=${b.blankListed} blankAnswered=${b.blankAnswered}  shifts=${shifts.join('/')}  offQuality=${offQuality}  sourceChanges=${chain.length - 1}  workerRestarts=${seqRestarts}${seqBacks ? ' stepsBack=' + seqBacks : ''}`);
     console.log(`    chain: ${chain.map((x) => `${x.k}x${x.n}`).join(' > ')}`);
     console.log(`    events: ${JSON.stringify(counts)}`);
-    for (const e of ev) if (['PlayerError', 'PlayerRecoverableError', 'playerState', 'sequenceRestart', 'backupHeld', 'pageRebased', 'adUi', 'blankInserted', 'backupsAwaited', 'adPassedThrough', 'stallRestart'].includes(e.type)) console.log(`      ${hhmmss(e.at)} ${e.type} ${JSON.stringify({ ...e, type: undefined, at: undefined })}`);
+    for (const e of ev) if (['PlayerError', 'PlayerRecoverableError', 'playerState', 'sequenceRestart', 'sequenceBack', 'backupHeld', 'pageRebased', 'adUi', 'blankInserted', 'backupsAwaited', 'adPassedThrough', 'stallRestart'].includes(e.type)) console.log(`      ${hhmmss(e.at)} ${e.type} ${JSON.stringify({ ...e, type: undefined, at: undefined })}`);
     if (!samples.length) console.log('    samples: NONE in window');
     else console.log(`    samples=${samples.length}${partial ? ' (cut at the save)' : ''} covered=${!!covered} clockStill<=${clockMax}s pictureStill<=${picMax}s paused=${paused} ready<3=${lowReady} adUi=${adUi} hidden=${hidden} err=${errs} videos<=${videos} frames ${samples[0].frames}->${samples[samples.length - 1].frames}  t ${samples[0].t.toFixed(1)}->${samples[samples.length - 1].t.toFixed(1)}`);
     if (samples.length) console.log(`    width: ${widths}`);
