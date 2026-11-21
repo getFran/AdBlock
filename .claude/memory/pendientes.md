@@ -20,14 +20,15 @@ hacer él va marcado **(Fran)**.
    pestaña de Twitch que ya estuviera abierta necesita además F5. Se cierra cuando el popup diga 1.0.8. Hasta entonces
    el "desync" tras cada midroll sigue.
 
-0b. **El primer midroll real con la 1.0.8.** El 21 `npm run verify -- twitch --seconds=900` sobre cinco canales no
-   cazó ninguno en la ventana (o se cortó antes; mirar el final de esta entrada cuando se actualice). Se cierra con
-   un registro (o el `verify`) en el que: `workerRestarts=0` en el primer poll (nada de `t` a 0 en las muestras al
-   empezar el corte), `pageRebased` con `live: true` y shift negativo (−6 a −25) al acabar, y `t` sin pausa ni salto en
-   los 10 s siguientes al fin del corte; y, lo que de verdad cuenta, que Fran no vea el directo rebobinarse al
-   acabar el anuncio. Si el corte vuelve a dejar registro con `sequence restart`, lo primero es el log del worker en el
-   primer poll (`backup X lists nothing past N`) y comprobar en sus playlists que `LIVE-SEQUENCE` sigue igualando el
-   `MEDIA-SEQUENCE` de los backups.
+0b. **El primer midroll real con la 1.0.8 salió bien, pero en la pestaña de Fran está por ver.** El 21 a las 13:03Z
+   `npm run verify -- twitch --seconds=900` cazó uno en teshrak (720p60, pod=1, 100 s, 28/28 `swapped`, 0 `held`):
+   el primer backup entró con `shift +0` y ningún `sequence back` (en la 1.0.7 ese mismo canal reiniciaba en el
+   primer poll), la página se renumeró `-1 by LIVE-SEQUENCE`, 0 reinicios, 0 parones, sin UI de anuncio y el reloj
+   avanzó 10,1 s en los 10 s siguientes al corte (`=> BLOCKED`). El registro del `verify` se quedó en la carpeta
+   temporal de Playwright, así que no hay JSON que releer. Se cierra del todo cuando Fran, con la 1.0.8 recargada,
+   pase un midroll sin ver el directo rebobinarse al acabar el anuncio; si un corte vuelve a dejar registro con
+   `sequence restart`, lo primero es el log del worker en el primer poll (`backup X lists nothing past N`) y comprobar
+   en sus playlists que `LIVE-SEQUENCE` sigue igualando el `MEDIA-SEQUENCE` de los backups.
 
 1. **Verificar el recorte nuevo por encima de 8 MB** (`496fd56`, lógica sencilla pero sin ejercitar; el mayor de hoy pesó
    5,6 MB con dos cortes). Solo lo dispara una pestaña con muchos cortes: la del 2 de noviembre llevaba 17 y sin recortar
