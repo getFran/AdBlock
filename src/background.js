@@ -247,6 +247,11 @@ chrome.runtime.onInstalled.addListener((details) => {
   ensureApplied()
     .then(() => (details && details.reason === 'install' ? reloadSiteTabs() : 0))
     .catch((e) => console.error('[AdBlock] per-site switch failed to apply', e));
+  // a version change puts a dot on the popup's What's new tab until it is opened once (the popup clears it)
+  const version = chrome.runtime.getManifest().version;
+  if (details && details.reason === 'update' && details.previousVersion && details.previousVersion !== version) {
+    chrome.storage.local.set({ whatsNew: version }).catch(() => {});
+  }
   scheduleUpdateCheck();
   checkForUpdate(false).catch(() => {});
   if (dev) dev.report().catch((e) => console.error('[AdBlock] report failed', e));

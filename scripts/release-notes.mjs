@@ -5,17 +5,20 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import config from '../build.config.mjs';
+import { entryFor, readChangelog } from './changelog.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const readJson = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
 const version = process.argv[2] || readJson(path.join(ROOT, 'package.json')).version;
+const entry = entryFor(readChangelog(), version);
+const whatsNew = entry ? `**What's new in ${version}** (${entry.date}):\n\n${entry.items.map((item) => '- ' + item).join('\n')}\n\n` : '';
 const pkgVersion = (name) => readJson(path.join(ROOT, 'node_modules', '@adguard', name, 'package.json')).version;
 const header = (file, re) => (re.exec(fs.readFileSync(path.join(ROOT, file), 'utf8').split('\n').slice(0, 3).join('\n')) || [])[1] || 'unknown date';
 const adguardLive = header(config.youtube.adguardLive.snapshot, /updated ([^,)]+)/);
 const uassets = header(config.youtube.uassets.snapshot, /vendored on (\S+)/);
 const repo = config.release.repo;
 
-process.stdout.write(`Filter lists in this build:
+process.stdout.write(`${whatsNew}Filter lists in this build:
 
 - AdGuard DNR rulesets (\`@adguard/dnr-rulesets\` ${pkgVersion('dnr-rulesets')}): Base with EasyList, Tracking Protection, Spanish/Portuguese, URL Tracking, Cookie Notices, Popups, Other Annoyances, Widgets
 - AdGuard Base YouTube rules from the live filter, updated ${adguardLive}
@@ -26,5 +29,5 @@ process.stdout.write(`Filter lists in this build:
 
 **Update:** extract the new zip over the same folder, replacing everything, and click the reload icon of the extension in \`chrome://extensions\`. Your switched-off sites are kept.
 
-Details: https://github.com/${repo}#install
+Details: https://github.com/${repo}#install · Every version: https://github.com/${repo}/blob/main/CHANGELOG.md
 `);

@@ -21,6 +21,7 @@ import { convertUboToAdg } from '@adguard/scriptlets/converters';
 import { isValidScriptletName } from '@adguard/scriptlets/validators';
 import config from './build.config.mjs';
 import { bucketKey, bucketOf } from './src/lib/hash.js';
+import { entryFor as changelogEntry, readChangelog } from './scripts/changelog.mjs';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const DIST = path.join(ROOT, 'dist');
@@ -557,7 +558,14 @@ async function main() {
   buildCosmetic();
   buildYoutube();
   await bundle('src/background.js', 'background.js', { format: 'esm', define: { __CONTENT_SCRIPTS__: JSON.stringify(CONTENT_SCRIPTS) } });
-  await bundle('src/popup/popup.js', 'popup.js');
+  // the popup's What's new tab is CHANGELOG.md; a release build refuses a version without its entry
+  const changelog = readChangelog();
+  if (!changelogEntry(changelog, EXT_VERSION)) {
+    if (RELEASE) throw new Error(`CHANGELOG.md has no entry for ${EXT_VERSION}: add it before releasing`);
+    log(`!! CHANGELOG.md has no entry for ${EXT_VERSION} yet (a release build would refuse)`);
+  }
+  await bundle('src/popup/popup.js', 'popup.js', { define: { __CHANGELOG__: JSON.stringify(changelog) } });
+  log(`popup: changelog with ${changelog.length} entries (${changelog[0] ? changelog[0].version : 'none'} first)`);
   fs.copyFileSync(path.join(ROOT, 'src', 'popup', 'popup.html'), path.join(DIST, 'popup.html'));
   await bundle('src/cosmetic/runtime.js', 'cosmetic/runtime.js');
   await bundle('src/youtube/main.js', 'youtube.js');

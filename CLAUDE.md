@@ -23,6 +23,7 @@ alcance (carcasa que consume piezas mantenidas por otros), no con otro.
 | Versión | `1.0.10` en `package.json` (publicada el 2026-11-23 con `scripts/publish.mjs` desde la sesión, en bypass: la hoja cosmética con una regla por selector en vez de bloques `:is()`, que es lo que hacía que Amazon fuese "muy mal" (9,4 s de recálculo de estilos por carga de resultados, ver "Decisiones" y la memoria `cosmetica-is-no-se-indexa-en-blink`), y el chequeo de ese coste en `verify generic`; la 1.0.9 la publicó la Action ese mismo lunes por la mañana solo con listas nuevas: AdGuard Base 2.5.6.60 sin cambios en las reglas de YouTube, y uAssets retiró el bloque de igorslab.de, cambió el dominio del `ima3.js` redirigido y añadió tres `trusted-edit-inbound-object` de YouTube que el build descarta, `youtube.js` sigue en 36 reglas; la 1.0.8 se publicó el 2026-11-21 con `scripts/publish.mjs` desde la sesión, en bypass: la numeración por `EXT-X-TWITCH-LIVE-SEQUENCE` que arregla el "desync" tras cada midroll desde que Twitch cambió la playlist del anuncio el 2026-11-19, ver "Decisiones"; la 1.0.7 la publicó la Action el lunes 2026-11-16 solo con listas nuevas: `@adguard/scriptlets` 2.6.0, AdGuard retiró del Base una regla cosmética de Shorts, uAssets cambió los marcadores del `rpnt` grande que el build descarta, y `youtube.js` sigue en 36 reglas; aquí se cargó con `git pull && npm run build` el 2026-11-19; la 1.0.6 la publicó la Action el lunes 2026-11-09 solo con listas nuevas: los dos scriptlets grandes de YouTube del Base de AdGuard saltan ahora los `playbackContext` que ya traen `vis` o `lactMilliseconds`, uBO comentó una de las dos reglas del snackbar y `youtube.js` sigue en 36 reglas; aquí se cargó con `git pull && npm run build` el 2026-11-12; la 1.0.5 el lunes 2026-11-02 solo con listas nuevas: una regla de YouTube del Base de AdGuard y la pasada de uAssets, que añade un `json-prune-fetch-response` sobre `/resolve_url` y deja `youtube.js` en 36 reglas; la 1.0.4 el 2026-10-31 con `scripts/publish.mjs` desde la sesión, en bypass: el preroll frío que la 1.0.3 dejó 5 min en negro; la 1.0.3 la publicó la Action el lunes 2026-10-26 con las listas nuevas y la espera a los tokens; la 1.0.2 el 2026-10-22 con el `pageRebase`, verificado antes en cuatro cortes reales de caedrel247; la 1.0.1 el 2026-10-21 con la recarga de pestañas al instalar y el reintento de `readScript`; la 1.0.0 el 2026-10-19); la Action construye la del tag (`EXT_VERSION`) |
 | Licencia | **GPL-3.0** (`LICENSE`): las listas y scriptlets de AdGuard y uAssets son GPL-3.0; Purple es Apache-2.0 y vaft MIT, atribuidos en `THIRD_PARTY_NOTICES.md`, que va dentro del zip |
 | Despliegue | **GitHub Releases**: `.github/workflows/release.yml` publica `getfran-adblock-<versión>.zip` (carpeta `getfran-adblock/` dentro, nombre fijo para descomprimir encima y conservar el ID) al empujar un tag `v*`, y los lunes si hay listas nuevas. En local, `npm run build` deja `dist/` para "Load unpacked" |
+| Changelog | `CHANGELOG.md` (inglés, `## <versión> — <fecha>` y viñetas `- `, lo más nuevo arriba; pedido por Fran el 2026-11-23: "un whats new… con lo importante de cada versión"). `scripts/changelog.mjs` lo parsea; el build lo mete en `popup.js` (`__CHANGELOG__`) para la pestaña **What's new** del popup, `release-notes.mjs` abre la release con la entrada de su versión, y **`build:release` falla si la versión no tiene entrada**. La Action de los lunes añade la suya ("Filter lists of <fecha>") con `node scripts/changelog.mjs add` antes de construir. Al publicar a mano: subir `version`, **escribir la entrada**, commit, publish |
 
 ## Decisiones tomadas (2026-10-15)
 
@@ -193,7 +194,9 @@ build.mjs        lee build.config.mjs y escribe dist/:
   background.js  service worker: registra los content scripts (con los sitios desactivados excluidos), aplica las reglas
                  allowAllRequests del interruptor, comprueba a diario si hay release nueva (badge NEW) y, en desarrollo,
                  escribe los registros de Twitch/YouTube (chrome.downloads -> Descargas\AdBlock\) y da diagnóstico a verify
-  popup.html/js  el interruptor por sitio y el aviso de versión nueva (en inglés)
+  popup.html/js  dos pestañas (en inglés): "This site" (el interruptor por sitio) y "What's new" (CHANGELOG.md parseado en el
+                 build, la versión instalada marcada, punto rojo en la pestaña la primera vez tras un cambio de versión:
+                 background.js guarda `whatsNew` en onInstalled), más el aviso de versión nueva
   icons/         el perro con el gorro, en 16/32/48/128
   LICENSE, THIRD_PARTY_NOTICES.md   copiados del repo: van dentro del zip
   manifest.json
@@ -268,7 +271,8 @@ Projects` → `Projects`, 2026-10-30) Chrome no encontró `dist/` en el siguient
 `C:\Users\javie\Desktop\Projects\AdBlock\dist`, con ID nueva: el storage empieza de cero (`getfran.dev` se siembra solo;
 lo desactivado a mano, `pem.lol` entonces, se vuelve a marcar) y hay que fijarla otra vez en la barra. Si la carpeta
 vuelve a moverse, avisar antes y recargarla después.
-Para publicar a mano una versión: subir `version` en `package.json`, commit, y `node scripts/publish.mjs <PAT>`
+Para publicar a mano una versión: subir `version` en `package.json`, **añadir su entrada en `CHANGELOG.md`** (sin ella el
+build de la Action falla y no hay release), commit, y `node scripts/publish.mjs <PAT>`
 (idempotente: hace público el repo si aún no lo es, crea y empuja el tag, espera la Action y enseña la release; el
 token va por argumento, nunca en el repo). **El clasificador de auto mode deniega hacer público el repo y empujar
 tags** («Create Public Surface») aunque esté autorizado aquí: ese script lo lanza Fran con

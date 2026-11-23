@@ -39,6 +39,9 @@ one, the icon shows a red **NEW** badge and the popup links to the release:
 Your switched-off sites are kept: the extension keeps the same identity as long as it is loaded from the
 same folder.
 
+What changed in each version is in [CHANGELOG.md](CHANGELOG.md) and in the popup, under **What's new**. A dot
+on that tab marks the first time you open the popup after an update.
+
 ## Switching it off on a site
 
 Click the icon and **Switch off for &lt;site&gt;**. That site and its subdomains get no network blocking, no
@@ -103,6 +106,10 @@ publishes a GitHub release:
 - every Monday (and on demand): the latest `@adguard/dnr-rulesets`, `@adguard/scriptlets` and vendored
   snapshots. If any list changed, it commits them to `main`, bumps the patch version, tags and releases.
   If nothing changed, it does nothing.
+
+Every version has an entry in `CHANGELOG.md` (`## <version> — <date>` followed by `- ` items): the popup's
+What's new tab and the release notes are built from it, and `npm run build:release` refuses a version without
+one. The Monday release adds its own "Filter lists of <date>" line (`node scripts/changelog.mjs add ...`).
 
 The development build keeps the evidence tooling: a record of each Twitch break and of YouTube's enforcement
 dialog is written to `Downloads/AdBlock/`, `window.__adblockTwitch` and `window.__adblockYoutube` expose the

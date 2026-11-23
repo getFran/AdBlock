@@ -77,9 +77,11 @@ jobs:
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           DNR=$(node -p "require('./node_modules/@adguard/dnr-rulesets/package.json').version")
           SCR=$(node -p "require('./node_modules/@adguard/scriptlets/package.json').version")
+          # the popup's What's new tab and the release notes read CHANGELOG.md; the release build refuses a version without its entry
+          node scripts/changelog.mjs add "$VERSION" "$(date -u +%F)" "Filter lists of $(date -u +%F) (AdGuard DNR rulesets $DNR, AdGuard Scriptlets $SCR, and the YouTube rules of AdGuard Base and uBlock Origin as of that day)."
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add package.json package-lock.json vendor/
+          git add package.json package-lock.json vendor/ CHANGELOG.md
           git commit -m "Lists of $(date -u +%F): @adguard/dnr-rulesets $DNR, @adguard/scriptlets $SCR (release $VERSION)"
           git tag "v$VERSION"
           git push origin HEAD:main "v$VERSION"

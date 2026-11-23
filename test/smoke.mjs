@@ -82,6 +82,33 @@ try {
   else console.log('skip twitch.tv: ' + twitchGlobal);
   if (!String(youtubeGlobal).startsWith('unreachable')) check('youtube.com global ' + (release ? 'absent' : 'present'), youtubeGlobal === (release ? 'undefined' : 'object'), youtubeGlobal);
   else console.log('skip youtube.com: ' + youtubeGlobal);
+
+  // the popup: no script errors, and its What's new tab lists the changelog with the built version first and marked
+  const popup = await context.newPage();
+  const popupErrors = [];
+  popup.on('pageerror', (e) => popupErrors.push(e.message));
+  await popup.goto(sw.url().replace(/[^/]*$/, 'popup.html'), { waitUntil: 'load', timeout: 15000 }).catch((e) => popupErrors.push(e.message));
+  await sleep(800);
+  const news = await popup
+    .evaluate(() => {
+      document.getElementById('tab-news').click();
+      const entries = [...document.querySelectorAll('#changelog .entry')];
+      const first = entries[0];
+      return {
+        shown: !document.getElementById('news').hidden && document.getElementById('site').hidden,
+        count: entries.length,
+        first: first ? first.querySelector('.version').textContent : null,
+        installed: !!(first && first.querySelector('.installed')),
+        items: first ? first.querySelectorAll('ul li').length : 0,
+      };
+    })
+    .catch((e) => ({ error: e.message }));
+  check(
+    "popup What's new tab",
+    !news.error && news.shown && news.first === manifest.version && news.installed && news.items > 0 && popupErrors.length === 0,
+    news.error || `${news.count} entries, first ${news.first}${news.installed ? ' (installed)' : ''} with ${news.items} item(s)${popupErrors.length ? '; errors: ' + popupErrors.join(' | ') : ''}`,
+  );
+  await popup.close();
 } finally {
   await context.close().catch(() => {});
   fs.rmSync(userDataDir, { recursive: true, force: true });

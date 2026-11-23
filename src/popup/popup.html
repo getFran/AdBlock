@@ -13,6 +13,7 @@
         --accent: #1a73e8;
         --off: #b3261e;
         --update-bg: #fdecea;
+        --code-bg: #f1f3f4;
       }
       @media (prefers-color-scheme: dark) {
         :root {
@@ -23,11 +24,12 @@
           --accent: #8ab4f8;
           --off: #f28b82;
           --update-bg: #3a2322;
+          --code-bg: #2d2e31;
         }
       }
       body {
         margin: 0;
-        width: 300px;
+        width: 320px;
         font: 13px/1.4 system-ui, -apple-system, 'Segoe UI', sans-serif;
         color: var(--fg);
         background: var(--bg);
@@ -37,7 +39,6 @@
         align-items: center;
         gap: 8px;
         padding: 10px 12px;
-        border-bottom: 1px solid var(--line);
       }
       header img {
         width: 24px;
@@ -47,8 +48,44 @@
       header strong {
         font-size: 14px;
       }
+      nav {
+        display: flex;
+        border-bottom: 1px solid var(--line);
+      }
+      nav button {
+        flex: 1;
+        padding: 7px 0 6px;
+        border: 0;
+        border-bottom: 2px solid transparent;
+        border-radius: 0;
+        margin-bottom: -1px;
+        background: transparent;
+        color: var(--muted);
+        font: inherit;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      nav button[aria-selected='true'] {
+        color: var(--accent);
+        border-bottom-color: var(--accent);
+      }
+      nav .dot {
+        display: inline-block;
+        width: 7px;
+        height: 7px;
+        margin-left: 6px;
+        border-radius: 50%;
+        background: var(--off);
+        vertical-align: middle;
+      }
+      nav .dot[hidden] {
+        display: none;
+      }
       main {
         padding: 12px;
+      }
+      section[hidden] {
+        display: none;
       }
       #update {
         display: flex;
@@ -105,28 +142,81 @@
         text-transform: uppercase;
         letter-spacing: 0.03em;
       }
-      ul {
+      #list {
         list-style: none;
         margin: 0;
         padding: 0;
       }
-      li {
+      #list li {
         display: flex;
         justify-content: space-between;
         align-items: center;
         padding: 4px 0;
         border-top: 1px solid var(--line);
       }
-      li button {
+      #list li button {
         padding: 2px 8px;
       }
       .empty {
         color: var(--muted);
       }
-      .note {
+      #changelog {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        max-height: 400px;
+        overflow-y: auto;
+      }
+      .entry {
+        padding: 8px 0;
+        border-top: 1px solid var(--line);
+      }
+      .entry:first-child {
+        padding-top: 0;
+        border-top: 0;
+      }
+      .entry-head {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        margin-bottom: 3px;
+      }
+      .entry-head .version {
+        font-weight: 600;
+      }
+      .entry-head .date {
         color: var(--muted);
         font-size: 12px;
-        margin-top: 12px;
+      }
+      .entry-head .installed {
+        margin-left: auto;
+        padding: 0 7px;
+        border: 1px solid var(--accent);
+        border-radius: 10px;
+        color: var(--accent);
+        font-size: 11px;
+        line-height: 16px;
+      }
+      .entry ul {
+        list-style: disc;
+        margin: 0;
+        padding-left: 16px;
+      }
+      .entry li {
+        padding: 1px 0;
+      }
+      code {
+        font: 12px/1 ui-monospace, Consolas, monospace;
+        padding: 1px 4px;
+        border-radius: 3px;
+        background: var(--code-bg);
+      }
+      .more {
+        margin: 10px 0 0;
+        font-size: 12px;
+      }
+      .more a {
+        color: var(--muted);
       }
       footer {
         display: flex;
@@ -146,15 +236,24 @@
       <img src="icons/icon-32.png" alt="" />
       <strong>getFran AdBlock</strong>
     </header>
+    <nav role="tablist">
+      <button type="button" role="tab" id="tab-site" aria-selected="true" aria-controls="site">This site</button>
+      <button type="button" role="tab" id="tab-news" aria-selected="false" aria-controls="news">What's new<span class="dot" id="news-dot" hidden></span></button>
+    </nav>
     <main>
       <div id="update" hidden>
         <span></span>
         <button type="button">Download</button>
       </div>
-      <div id="current"></div>
-      <h2>Switched off on</h2>
-      <ul id="list"></ul>
-      <p class="note">Switching a site off removes network blocking, cosmetic CSS and the YouTube and Twitch scripts on it, subdomains included. The tab reloads when you change it.</p>
+      <section id="site" role="tabpanel">
+        <div id="current"></div>
+        <h2>Switched off on</h2>
+        <ul id="list"></ul>
+      </section>
+      <section id="news" role="tabpanel" hidden>
+        <ol id="changelog"></ol>
+        <p class="more"><a id="full" href="#">Full changelog and releases on GitHub</a></p>
+      </section>
     </main>
     <footer>
       <span id="version"></span>
