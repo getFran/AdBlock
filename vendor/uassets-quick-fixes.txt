@@ -1,4 +1,4 @@
-! Snapshot of uAssets quick-fixes.txt vendored on 2026-11-16T16:03:41.890Z from https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/quick-fixes.txt
+! Snapshot of uAssets quick-fixes.txt vendored on 2026-11-23T18:21:06.146Z from https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/quick-fixes.txt
 ! Refresh with: npm run vendor
 ! Title: uBlock₀ filters – Quick fixes
 ! Last modified: %timestamp%
@@ -24,13 +24,17 @@ youtube.com##+js(json-prune, playerResponse.adPlacements playerResponse.playerAd
 !#endif
 !#endif
 !#endif
-www.youtube.com##+js(rpnt, script, /(\(function serverContract\(\)|^if \(window\.ytcsi)/, (()=>{if("YOUTUBE_PREMIUM_LOGO"===window.ytInitialData?.topbar?.desktopTopbarRenderer?.logo?.topbarLogoRenderer?.iconImage?.iconType||"YOUTUBE_PREMIUM_LOGO"===document.getElementById("masthead").attributes["logo-type"].value||location.href.startsWith("https://www.youtube.com/tv#/")||location.href.startsWith("https://www.youtube.com/embed/"))return;const e=window.ytcfg.data_.INNERTUBE_CONTEXT.client.userAgent\,t=["channel"\,"yahi"\,"inline"\,"oaeb"];let o=!1\,r=t;const n=t=>{if(t){let o=e?.match?.(/Mozilla\/5\.0 \([^)]+/)?.[0];window.ytcfg.data_.INNERTUBE_CONTEXT.client.userAgent=o?e.replace?.(o\,o+"; "+t):e}else window.ytcfg.data_.INNERTUBE_CONTEXT.client.userAgent=e}\,a=()=>{let e=document.getElementById("movie_player");return{player:e\,response:e?.getPlayerResponse?.()\,stats:e?.getStatsForNerds?.()\,progress:e?.getProgressState?.()\,buffer:e?.getPlayerStateObject?.()?.isBuffering}}\,s=(e\,t\,o)=>e&&"0.00 s"===t?.buffer_health_seconds&&"0x0"===t?.resolution&&o.length>0\,l=()=>{let{player:e\,response:t\,stats:n\,buffer:l}=a();e&&s(l\,n\,r)&&(t?.playbackTracking?.videostatsPlaybackUrl?.baseUrl?.includes?.("reloadxhr")&&(r=r.slice(1))\,o=!0)};document.addEventListener("DOMContentLoaded"\,(function(){const e=()=>{let e\,l\,{player:i\,response:d\,stats:c\,progress:p\,buffer:y}=a();if(i&&(window.location.href.includes("/watch?")||window.location.href.includes("/embed/"))){if(p&&p.duration>0&&(p.loaded<p.duration||p.duration-p.current>1)||d?.videoDetails?.isLive){if(c&&!c?.debug_info?.startsWith?.("SSAP\, AD")){const t=new URLSearchParams(window.location.search)\,a=d.videoDetails?.videoId\,u=d.playerConfig?.playbackStartConfig?.startSeconds||parseInt(t.get("t")\,10)||0\,g=d.playabilityStatus?.errorScreen\,w=JSON.stringify(g?.playerErrorMessageRenderer?.subreason?.runs||g?.playerInterstitialRenderer?.content?.interstitialViewModel?.description?.commandRuns);return void("UNPLAYABLE"===d?.playabilityStatus?.status&&!g?.playerErrorMessageRenderer?.playerCaptchaViewModel&&w?.includes?.("WEB_PAGE_TYPE_UNKNOWN")&&w?.includes?.("https://support.google.com/youtube/answer/3037019")?(r=r.slice(1)\,r.length>0?n(r[0]):n("")\,o=!1\,i.loadVideoById(a\,u)):0===r.length?(o=!1\,n("")):s(y\,c\,r)&&o?(n(r[0])\,o=!1\,i.loadVideoById(a\,u)):!o&&p.current-u>.1&&p.current-u<5&&location.href.includes("&list=")&&null===i.getPlaylistId?.()&&(e=document.querySelector("yt-playlist-manager")\,l=e?.getPlaylistData?.()\,l&&(e.setPlaylistData?.(l)\,e.setPlayerPlaybackControlData?.({playlistPanelRenderer:l}))))}c&&p.duration>0&&i.seekTo?.(p.duration)}}else r=t};e()\,new MutationObserver((()=>{e()})).observe(document\,{childList:!0\,subtree:!0})}))\,window.Map.prototype.has=new Proxy(window.Map.prototype.has\,{apply:(e\,t\,r)=>("onSnackbarMessage"!==r?.[0]||o||l()\,Reflect.apply(e\,t\,r))})\,window.Array.prototype.push=new Proxy(window.Array.prototype.push\,{apply:(e\,t\,o)=>{let r=o?.[0];return!r||"object"!=typeof r||"Uint8Array"!==r.constructor.name||r.buffer?.byteLength!==r.length||105!==r.length&&104!==r.length||(console.log(r)\,l())\,Reflect.apply(e\,t\,o)}});const i={apply:(e\,t\,o)=>{const r=o[0];return"function"==typeof r&&r.toString().includes("onAbnormalityDetected")&&(o[0]=function(){})\,Reflect.apply(e\,t\,o)}};window.Promise.prototype.then=new Proxy(window.Promise.prototype.then\,i)})();$1, sedCount, 1, excludes, MutationObserver, condition, /serverContract|js_ld/)
+www.youtube.com##+js(rpnt, script, /(\(function serverContract\(\)|^if \(window\.ytcsi|^writeEmbed)/, (()=>{if("YOUTUBE_PREMIUM_LOGO"===window.ytInitialData?.topbar?.desktopTopbarRenderer?.logo?.topbarLogoRenderer?.iconImage?.iconType||"YOUTUBE_PREMIUM_LOGO"===document.getElementById("masthead")?.attributes?.["logo-type"]?.value||location.href.startsWith("https://www.youtube.com/tv#/"))return;const e=window.ytcfg.data_.INNERTUBE_CONTEXT.client.userAgent;var t;t=location.href.startsWith("https://www.youtube.com/embed/")?["channel"\,"eafg"]:["channel"\,"yahi"\,"inline"\,"oaeb"];let r=!1\,n=t;const o=t=>{if(t){let r=e?.match?.(/Mozilla\/5\.0 \([^)]+/)?.[0];window.ytcfg.data_.INNERTUBE_CONTEXT.client.userAgent=r?e.replace?.(r\,r+"; "+t):e}else window.ytcfg.data_.INNERTUBE_CONTEXT.client.userAgent=e}\,a=()=>{let e=document.getElementById("movie_player");return{player:e\,response:e?.getPlayerResponse?.()\,stats:e?.getStatsForNerds?.()\,progress:e?.getProgressState?.()\,buffer:e?.getPlayerStateObject?.()?.isBuffering}}\,s=(e\,t\,r)=>e&&"0.00 s"===t?.buffer_health_seconds&&"0x0"===t?.resolution&&r.length>0\,i=()=>{let{player:e\,response:t\,stats:o\,buffer:i}=a();!r&&e&&s(i\,o\,n)&&(t?.playbackTracking?.videostatsPlaybackUrl?.baseUrl?.includes?.("reloadxhr")&&(n=n.slice(1))\,r=!0)};document.addEventListener("DOMContentLoaded"\,(function(){const e=()=>{let e\,i\,{player:l\,response:d\,stats:c\,progress:p\,buffer:y}=a();if(l&&(window.location.href.includes("/watch?")||window.location.href.includes("/embed/"))){if(p&&p.duration>0&&(p.loaded<p.duration||p.duration-p.current>1)||d?.videoDetails?.isLive){if(c&&!c?.debug_info?.startsWith?.("SSAP\, AD")){const t=new URLSearchParams(window.location.search)\,a=d.videoDetails?.videoId\,u=d.playerConfig?.playbackStartConfig?.startSeconds||parseInt(t.get("t")\,10)||0\,g=d.playabilityStatus?.errorScreen\,w=JSON.stringify(g?.playerErrorMessageRenderer?.subreason?.runs||g?.playerInterstitialRenderer?.content?.interstitialViewModel?.description?.commandRuns);return void("UNPLAYABLE"===d?.playabilityStatus?.status&&!g?.playerErrorMessageRenderer?.playerCaptchaViewModel&&w?.includes?.("WEB_PAGE_TYPE_UNKNOWN")&&w?.includes?.("https://support.google.com/youtube/answer/3037019")?(n=n.slice(1)\,n.length>0?o(n[0]):o("")\,r=!1\,l.loadVideoById(a\,u)):0===n.length?(r=!1\,o("")):s(y\,c\,n)&&r?(o(n[0])\,r=!1\,l.loadVideoById(a\,u)):!r&&p.current-u>.1&&p.current-u<5&&location.href.includes("&list=")&&null===l.getPlaylistId?.()&&(e=document.querySelector("yt-playlist-manager")\,i=e?.getPlaylistData?.()\,i&&(e.setPlaylistData?.(i)\,e.setPlayerPlaybackControlData?.({playlistPanelRenderer:i}))))}c&&p.duration>0&&l.seekTo?.(p.duration)}}else n=t};e()\,new MutationObserver((()=>{e()})).observe(document\,{childList:!0\,subtree:!0})}))\,window.Map.prototype.has=new Proxy(window.Map.prototype.has\,{apply:(e\,t\,n)=>("onSnackbarMessage"!==n?.[0]||r||i()\,Reflect.apply(e\,t\,n))})\,window.Array.prototype.push=new Proxy(window.Array.prototype.push\,{apply:(e\,t\,r)=>{let n=r?.[0];return!n||"object"!=typeof n||"Uint8Array"!==n.constructor.name||n.buffer?.byteLength!==n.length||105!==n.length&&104!==n.length||i()\,Reflect.apply(e\,t\,r)}});const l={apply:(e\,t\,r)=>{const n=r[0];return"function"==typeof n&&n.toString().includes("onAbnormalityDetected")&&(r[0]=function(){})\,Reflect.apply(e\,t\,r)}};window.Promise.prototype.then=new Proxy(window.Promise.prototype.then\,l)})();$1, sedCount, 1, excludes, MutationObserver, condition, /serverContract|js_ld|writeEmbed/)
 www.youtube.com##+js(trusted-edit-inbound-object, JSON.stringify, 0, [?.attestationRequest][?.context.client.userAgent*="channel"].context.client[?.clientName=="WEB"]+={"clientScreen":"CHANNEL"})
 www.youtube.com##+js(trusted-edit-inbound-object, JSON.stringify, 0, [?.attestationRequest][?.context.client.userAgent*="yahi"]+={"params":"YAHI"})
 www.youtube.com##+js(trusted-edit-inbound-object, JSON.stringify, 0, [?.attestationRequest][?.context.client.userAgent*="inline"].playbackContext.contentPlaybackContext+={"isInlinePlaybackNoAd":true})
 www.youtube.com##+js(trusted-edit-inbound-object, JSON.stringify, 0, [?.attestationRequest][?.context.client.userAgent*="oaeb"]+={"params":"oAEBogYBLg"})
 www.youtube.com##+js(trusted-edit-inbound-object, JSON.stringify, 0, [?.attestationRequest][?.context.client.userAgent=/adunit|channel|inline|yahi|oaeb|eafg|yaf4/].playbackContext.contentPlaybackContext.referer=repl({"regex":"(?:#reloadxhr)?$"\,"replacement":"#reloadxhr"}))
 www.youtube.com##+js(trusted-edit-inbound-object, JSON.stringify, 0, [?.createCommentParams].context.client.userAgent=repl({"regex":"/; (adunit|channel|inline|yahi|oaeb|eafg|yaf4)\b/"\,"replacement":""}))
+! https://github.com/uBlockOrigin/uAssets/issues/30157#issuecomment-5562527576
+www.youtube.com##+js(trusted-edit-inbound-object, JSON.stringify, 0, [?.serializedThirdPartyEmbedConfig][?.context.client.userAgent*="channel"].context.client[?.clientName=="WEB_EMBEDDED_PLAYER"]+={"clientScreen":"CHANNEL"})
+www.youtube.com##+js(trusted-edit-inbound-object, JSON.stringify, 0, [?.serializedThirdPartyEmbedConfig][?.context.client.userAgent*="eafg"]+={"params":"eAFgAQ"})
+www.youtube.com##+js(trusted-edit-inbound-object, JSON.stringify, 0, [?.context.thirdParty.embeddedPlayerContext][?.context.client.userAgent=/channel|eafg|yaf4/].playbackContext.contentPlaybackContext.referer=repl({"regex":"(?:#reloadxhr)?$"\,"replacement":"#reloadxhr"}))
 ! https://github.com/uBlockOrigin/uAssets/issues/30157#issuecomment-5206026055
 ! www.youtube.com##+js(set, ytcfg.data_.EXPERIMENT_FLAGS.all_web_enable_network_machine, false)
 ! www.youtube.com##+js(set, ytcfg.data_.EXPERIMENT_FLAGS.all_web_network_machine_raw_request, false)
@@ -73,7 +77,7 @@ www.youtube.com##+js(trusted-replace-xhr-response, /"adPlacements.*?("adSlots"|"
 www.youtube.com##+js(trusted-rpfr, '"adPlacements"', '"no_ads"', player?)
 www.youtube.com##+js(trusted-rpfr, '"adSlots"', '"no_ads"', player?)
 www.youtube.com##+js(trusted-rpfr, '"adSlots"', '"no_ads"', /^\W+$/)
-www.youtube.com##+js(rmnt, script, window\,"fetch")
+www.youtube.com##+js(rmnt, script, 'window,"fetch"')
 !#else
 ||www.youtube.com/playlist?list=$xhr,1p,replace=/"adPlacements"/"no_ads"/
 ||www.youtube.com/playlist?list=$xhr,1p,replace=/"adSlots"/"no_ads"/
@@ -163,12 +167,12 @@ web.facebook.com,www.facebook.com##+js(trusted-prevent-dom-bypass, Element.proto
 
 ! https://github.com/uBlockOrigin/uAssets/issues/24745 - https://voe.sx/e/2z9smej3tebe
 ! VOE sites
-||imasdk.googleapis.com/js/sdkloader/ima3.js$script,3p,redirect=google-ima.js,domain=arianathankspecial.com,important
-arianathankspecial.com##+js(nowoif)
-arianathankspecial.com##+js(set, console.clear, undefined)
-arianathankspecial.com##+js(acs, globalThis, break;case)
-arianathankspecial.com##+js(acs, WebAssembly, atob)
-||arianathankspecial.com^$badfilter
+||imasdk.googleapis.com/js/sdkloader/ima3.js$script,3p,redirect=google-ima.js,domain=caseyseemavoid.com,important
+caseyseemavoid.com##+js(nowoif)
+caseyseemavoid.com##+js(set, console.clear, undefined)
+caseyseemavoid.com##+js(acs, globalThis, break;case)
+caseyseemavoid.com##+js(acs, WebAssembly, atob)
+||caseyseemavoid.com^$badfilter
 
 ! next-episode .net
 !next-episode.net##+js(rmnt, script, '/[\s\S]{0,}head[\s\S]{1900,}/')
@@ -457,6 +461,7 @@ chzzkban.xyz##+js(trusted-suppress-native-method, Node.prototype.contains, '{"cl
 
 ! https://github.com/uBlockOrigin/uAssets/issues/26527
 historicaerials.com##+js(aeld, load, showFallbackModal)
+historicaerials.com##+js(rpnt, script, /if \(result && checkSlotData == "\w+"\)/, if (true))
 historicaerials.com##+js(trusted-create-html, #historicaerials_g_728x90_ATF, <div id="google_ads_iframe_/22597447651/historicaerials_g_728x90_ATF_0__container__"><iframe id="google_ads_iframe_/22597447651/historicaerials_g_728x90_ATF_0" width="2" height="2" data-load-complete="true"></iframe></div>)
 @@||historicaerials.com^$ghide
 historicaerials.com##.left_col
@@ -534,94 +539,6 @@ pdftoshokan.com##^script:has-text(/ad.?Config|prepare.?Pop|\/popunder|ads_host/)
 ||pdftoshokan.com/window.location.href$doc,uritransform=/window\.location\.href//
 ||pdftoshokan.com/manga/window.location.href$doc,uritransform=/manga\/window\.location\.href//
 
-! https://github.com/uBlockOrigin/uAssets/issues/34187
-igorslab.de##^script#igorslab-tracking
-igorslab.de##a[aria-label*="Banner"]
-igorslab.de##.herald-sticky
-igorslab.de##img[src^="blob:http"]
-/^https:\/\/www\.igorslab\.de\/(?:[0-9a-z-]{7,}\/)+A[\/0-9A-Z_a-z-]{100,}(?:[0-9a-z-]{7,}\/)*$/$image,1p,match-case
-/^https:\/\/www\.igorslab\.de\/wp-content\/uploads\/202\d\/\d{2}\/(?=[a-z]*\d)(?=\d*[a-z])[0-9a-z]{7,15}\.(?:pn|jp)g(?:\?[0-9A-Z_a-z-]{7,}=[0-9A-Z_a-z-]{7,})?$/$image,1p,match-case
-*$script,xhr,3p,denyallow=google.com|jsdelivr.net,domain=igorslab.de
-||igorslab.de^$script,xhr,1p
-||igorslab.de/?$image
-||igorslab.de/wp-content/*/ajax-handler.php$image
-||igorslab.de/wp-content/uploads/2020/03/980x120px_pure.jpg
-||igorslab.de/wp-content/uploads/2020/03/igor_pulse_9070GRE_
-||igorslab.de/wp-content/uploads/2020/06/nv-rtx-pro-blackwell-980x125-1.jpg
-||igorslab.de/wp-content/uploads/2020/06/nv-rtx-pro-blackwell-display-300x300-1.jpg
-||igorslab.de/wp-content/uploads/2021/04/Optris_Final-2.jpg
-||igorslab.de/wp-content/uploads/2021/07/SHARKOON_Igors_Lab_SKILLER_SGP30_D1-D6_1024x120px.jpg
-||igorslab.de/wp-content/uploads/2021/07/SHARKOON_Igors_Lab_SKILLER_SGK50_S2_301x251px.jpg
-||igorslab.de/wp-content/uploads/2021/07/SHARKOON_Igors_Lab_SKILLER_SGK50_S2_301x501px.jpg
-||igorslab.de/wp-content/uploads/2021/07/SHARKOON_Igors_Lab_SKILLER_SGM50W_301x501px.jpg
-||igorslab.de/wp-content/uploads/2021/07/SHARKOON_Igors_Lab_SKILLER_SGM50W_1024x120px.jpg
-||igorslab.de/wp-content/uploads/2021/07/SHARKOON_Igors_Lab_SKILLER_SGP30_D1-D6_301x251px.jpg
-||igorslab.de/wp-content/uploads/2021/07/SHARKOON_Igors_Lab_SKILLER_SGP30_D1-D6_301x501px.jpg
-||igorslab.de/wp-content/uploads/2021/11/Fractal-Sep-launch.jpg
-||igorslab.de/wp-content/uploads/2022/12/View-600-Teal-300x400-1.jpg
-||igorslab.de/wp-content/uploads/2023/04/980x100_DAMN_Fruehlingsdeals_ARCTIC_MINDFACTORY.jpg
-||igorslab.de/wp-content/uploads/2023/04/Igors_Lab_ARCTIC_MX-7_980x100_
-||igorslab.de/wp-content/uploads/2023/11/980x125-2.png
-||igorslab.de/wp-content/uploads/2024/01/Palit_RTX50_300_250_en.jpg
-||igorslab.de/wp-content/uploads/2024/09/0926_VGA_Autumn-Pack_900x125.jpg
-||igorslab.de/wp-content/uploads/2024/09/Igors_Lab_980x125.jpg
-||igorslab.de/wp-content/uploads/2025/03/DP_H_DE.png
-||igorslab.de/wp-content/uploads/2024/07/SHARKOON_Igors_Lab_SKILLER_SGM50W_301x251px.jpg
-||igorslab.de/wp-content/uploads/2025/08/HATOR-Skyfall_80_MAG_ULTIMA_8K_Wireless.jpg
-||igorslab.de/wp-content/uploads/2025/10/Terminator-Air_300-x-400-1.jpg
-||igorslab.de/wp-content/uploads/2025/11/V2-Banner_V4_1-2.jpg
-||igorslab.de/wp-content/uploads/2025/12/Halnziye.jpg
-||igorslab.de/wp-content/uploads/2026/01/Cooler-Master.png
-||igorslab.de/wp-content/uploads/2026/03/AT-120-K-300%C3%97250.jpg
-||igorslab.de/wp-content/uploads/2026/04/300-%D1%85-350-HATOR-Quasar-3-Ultima-3.jpg
-||igorslab.de/wp-content/uploads/2026/07/Terminator-Air_980-x-125-1.jpg
-||igorslab.de/wp-content/uploads/2026/08/DP_V_DE.png
-||igorslab.de/wp-content/uploads/2026/08/HK5-2026.jpg
-||igorslab.de/wp-content/uploads/2026/08/Horizontal.jpg
-||igorslab.de/wp-content/uploads/2026/08/Vertical.jpg
-||igorslab.de/wp-content/uploads/2026/10/HY2612-V2.jpg
-||igorslab.de/wp-content/uploads/2026/10/Solstice-H.png
-||igorslab.de/wp-content/uploads/2026/10/Solstice-V.png
-@@/^https:\/\/www\.igorslab\.de\/wp-content\/themes\/igor\/js\/jquery-\d\.\d{1,2}\.\d{1,2}\.min\.js\?ver=/$script,1p,match-case
-@@||www.igorslab.de/wp-content/uploads/20*.pdf^$xhr,1p
-@@||www.igorslab.de/community/$script,xhr
-@@||www.igorslab.de/cdn-cgi/challenge-platform/$script,xhr
-@@||www.igorslab.de/cdn-cgi/scripts/*/cloudflare-static/rocket-loader.min.js
-@@||www.igorslab.de/wp-content/plugins/XFWP/assets/js/xfwp-admin.js
-@@||www.igorslab.de/wp-content/plugins/ba-plus-before-after-image-slider/assets/s201-bai.js
-@@||www.igorslab.de/wp-content/plugins/igorslab-advanced-pdf-viewer/assets/viewer.js
-@@||www.igorslab.de/wp-content/plugins/igorslab-ai-seo-performance-suite/assets/js/consent.js
-@@||www.igorslab.de/wp-content/plugins/igorslab-geizhals-auto/assets/ilgha-frontend.js
-@@||www.igorslab.de/wp-content/plugins/igorslab-youtube-latest-shortcode/assets/frontend.js
-@@||www.igorslab.de/wp-content/plugins/meks-flexible-shortcodes/js/main.js
-@@||www.igorslab.de/wp-content/plugins/wonderplugin-gridgallery/engine/wonderplugingridgallery.js
-@@||www.igorslab.de/wp-content/plugins/wonderplugin-gridgallery/engine/wonderplugingridlightbox.js
-@@||www.igorslab.de/wp-content/plugins/wonderplugin-gallery/engine/wonderplugingallery.js
-@@||www.igorslab.de/wp-content/plugins/wonderplugin-slider/engine/wonderpluginslider.js
-@@||www.igorslab.de/wp-content/plugins/wonderplugin-slider/engine/wonderpluginsliderskins.js
-@@||www.igorslab.de/wp-content/plugins/wp-google-search/assets/js/google_cse_v2.js
-@@||www.igorslab.de/wp-content/themes/herald/assets/js/min.js
-@@||www.igorslab.de/wp-includes/js/utils.min.js
-@@||www.igorslab.de/wp-includes/js/imagesloaded.min.js
-@@||www.igorslab.de/wp-admin/admin-ajax.php
-igorslab.de##a[rel][target]:not([target="blank"],[target="_blank"])
-igorslab.de##[class]:has-text(/^\s*(Advertisement|Werbung|广告)\s*$/)
-igorslab.de##div[class]:matches-css-before(content: /^\s*\"(Advertis.+|Werbung|广告)\"\s*$/)
-igorslab.de##img:remove-attr(/data-.+/)
-igorslab.de/community/#@#img:remove-attr(/data-.+/)
-igorslab.de##+js(no-fetch-if, %22vt%22)
-||igorslab.de/wp-content/plugins/igorslab-ads-suite/
-igorslab.de##.ilgha-scale-frame:has-text(/Similar products|Ähnliche Artikel|相似产品/)
-igorslab.de##div[style="height: 90 px; text-align: left;"]
-igorslab.de##div[style^="display:block;position:relative;max-width:"]
-igorslab.de##div[id]:matches-attr("/trackid$/")
-igorslab.de###extras, #ilab-consent-banner, #ilab-consent-reopen-wrap, .entry-header, .footer-bottom, .herald-entry-content, .herald-header-wraper, .herald-main-content, .herald-module, .widget-title, .xfwp-tabbed, .mfp-content:first-of-type:others()
-igorslab.de/community/#@##extras, #ilab-consent-banner, #ilab-consent-reopen-wrap, .entry-header, .footer-bottom, .herald-entry-content, .herald-header-wraper, .herald-main-content, .herald-module, .widget-title, .xfwp-tabbed, .mfp-content:first-of-type:others()
-igorslab.de##[style*="!important"]
-igorslab.de##[style*="aspect-ratio"]
-igorslab.de##[style*="background-image:url"]
-igorslab.de##div[style*="blob:http"]:style(background: none !important;)
-
 ! https://github.com/uBlockOrigin/uAssets/issues/27044#issuecomment-5723020527
 wolt.com#@#div:has(> div > div > div > div > div > div > p:has-text(Sponsored))
 wolt.com#@#div:has(> div > div > div > div > div > p:has-text(Sponsored))
@@ -667,8 +584,12 @@ tonuriaz.info,wakuraw.com,klmanga.cloud,trogiupnhanh.com,mangaruu.com,rawfree.to
 ||city.yubari.lg.jp/uploaded/banner/$badfilter
 
 ! https://github.com/AdguardTeam/AdguardFilters/issues/245421
-socialxup.com##a[href^="/"]:not([data-track], :has(> img[src^="/avatar/"])):matches-attr("href"="/^\/(?=[A-Z_a-z]*[0-9])[0-9A-Z_a-z]+$/"):not(:has-text(/注目|達成|凍結|増加|減少|フォロワー/))
-||socialxup.com/_next/static/chunks/$script,replace=/if\("auxclick"===e\.type&&1!==e\.button\)return;/if(1)e.preventDefault();return;/
+socialxup.com##^responseheader(location)
+socialxup.com##a[data-track="related_click"]:not(:has(> div[class="flex flex-col items-center text-center"] > img[src^="/avatar/"][src$=".png"][height="48"][width="48"][style="color: transparent;"] + p + p[class="text-xs text-gray-500 truncate w-full"] + p[class="text-xs text-blue-600 mt-1"]:has-text(/^\d+(,\d+)* フォロワー$/)))
+socialxup.com##a[data-track="home_popular_tweet_profile_click"]:not(:has-text(/^@[0-9A-Z_a-z]+$/)):not(:has(> img:only-child))
+socialxup.com#@#a[href^="/"]:not([data-track], :has(> img[src^="/avatar/"])):matches-attr("href"="/^\/(?=[A-Z_a-z]*[0-9])[0-9A-Z_a-z]+$/"):not(:contains(/注目|達成|凍結|増加|減少|フォロワー/))
+socialxup.com##.promo-card
+socialxup.com#@#+js(aeld, click, /\[native code\]|^\s*e\s*=>\s*.+\(\s*e\s*\)\s*$/)
 
 ! https://github.com/uBlockOrigin/uAssets/issues/25273#issuecomment-6821014851
 ||api.community.fox.com/*/metrics$badfilter
