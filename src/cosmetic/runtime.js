@@ -24,10 +24,13 @@ import { bucketKey, bucketOf } from '../lib/hash.js';
   const hostMatches = (domain) => host === domain || host.endsWith('.' + domain);
   const selectorOf = (item) => (typeof item === 'string' ? item : item.x.some(hostMatches) ? null : item.s);
 
+  // One rule per selector, never `:is(a, b, c...)`: Blink does not bucket a rule whose rightmost compound is an
+  // :is() list by the ids/classes inside it, so every element was tested against all 16k selectors on every style
+  // recalculation (amazon.es search results, 25k nodes: 800 ms per recalc and 9 s per page load, 2026-11-23; with
+  // plain rules 17 ms and 0.3 s). A selector this Chromium rejects only loses itself: parsing drops that one rule.
   function cssFor(hide, css) {
     let text = '';
-    // :is() takes a forgiving selector list: one unsupported selector does not drop the whole rule
-    for (let i = 0; i < hide.length; i += 400) text += ':is(' + hide.slice(i, i + 400).join(',') + '){display:none!important}\n';
+    for (const s of hide) text += s + '{display:none!important}\n';
     return text + css.join('\n');
   }
 

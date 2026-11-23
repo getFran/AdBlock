@@ -106,6 +106,35 @@ async function testGeneric({ context, sw }) {
   say(`DNR matches reported by the service worker: ${matched.length} (${Object.entries(byRuleset).map(([k, v]) => `${k}:${v}`).join(', ')})`);
   await page.close();
 
+  // What the cosmetic sheet costs on a big DOM: amazon.es search results (~25k nodes). On 2026-11-23 the generic
+  // sheet written as `:is(a,b,c...)` chunks made Blink test every element against all 16k selectors on every style
+  // recalculation: 9.4 s of style recalc per page load (0.27 s with amazon.es switched off) and Fran saw Amazon crawl.
+  // With one rule per selector it is ~0.6 s. Anything above 1.5 s here means the sheet is being matched the slow way.
+  section('performance: amazon.es search results with the extension on');
+  const perf = await context.newPage();
+  const cdp = await context.newCDPSession(perf);
+  await cdp.send('Performance.enable');
+  await perf.addInitScript(() => {
+    window.__longTasks = [];
+    try {
+      new PerformanceObserver((list) => {
+        for (const e of list.getEntries()) window.__longTasks.push(Math.round(e.duration));
+      }).observe({ type: 'longtask', buffered: true });
+    } catch {}
+  });
+  await perf.goto('https://www.amazon.es/s?k=teclado+mecanico', { waitUntil: 'load', timeout: 90000 }).catch((e) => say(`  ${e.message.split('\n')[0]}`));
+  await perf.evaluate(() => document.querySelector('#sp-cc-rejectall-link, #sp-cc-accept')?.click()).catch(() => {});
+  await sleep(10000);
+  const metrics = Object.fromEntries((await cdp.send('Performance.getMetrics')).metrics.map((m) => [m.name, m.value]));
+  const longTasks = await perf.evaluate(() => window.__longTasks || []).catch(() => []);
+  const sheet = await perf.evaluate(() => ({ sheets: document.adoptedStyleSheets.length, rules: document.adoptedStyleSheets.reduce((n, s) => n + s.cssRules.length, 0), status: self.__adblockCosmetic || null })).catch(() => null);
+  const recalcMs = Math.round(metrics.RecalcStyleDuration * 1000);
+  say(`  nodes=${metrics.Nodes} | style recalc ${metrics.RecalcStyleCount}x ${recalcMs} ms | layout ${Math.round(metrics.LayoutDuration * 1000)} ms | script ${Math.round(metrics.ScriptDuration * 1000)} ms | long tasks ${longTasks.length} (sum ${longTasks.reduce((a, b) => a + b, 0)} ms, max ${Math.max(0, ...longTasks)} ms)`);
+  say(`  cosmetic: ${JSON.stringify(sheet)}`);
+  const cosmeticFast = recalcMs < 1500;
+  say(`  cosmetic sheet cost: ${cosmeticFast ? 'fine' : 'TOO SLOW !! (the generic sheet is being matched against every element; see src/cosmetic/runtime.js cssFor)'}`);
+  await perf.close();
+
   // The per-site switch, on the site that broke on 2026-10-16: AdGuard Tracking Protection's `||umami.` rule blocks
   // the Umami dashboard's own scripts. With getfran.dev switched off nothing on it may be blocked and no cosmetic
   // sheet injected (the content scripts are not registered for it, and a DNR allowAllRequests rule covers its frames).
@@ -128,7 +157,7 @@ async function testGeneric({ context, sw }) {
   await sw.evaluate((sites) => globalThis.__adblock.setDisabledSites(sites), before);
   const switchOk = on.blocked > 0 && off.blocked === 0 && off.sheets === 0;
   say(`per-site switch: ${switchOk ? 'works (blocked with it on, nothing blocked and no cosmetic sheet with it off)' : 'NOT verified !!'}; list restored to ${JSON.stringify(before)}`);
-  return { blocked: blocked.length, matched: matched.length, switchOk };
+  return { blocked: blocked.length, matched: matched.length, switchOk, cosmeticFast, recalcMs };
 }
 
 // ---------------------------------------------------------------------------------------------------------
