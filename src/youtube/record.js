@@ -7,13 +7,22 @@
 // popup and the error screen, and when one shows up (or by hand: window.__adblockYoutube.save()) sends a JSON through
 // src/bridge.js to the service worker, which writes it to Downloads/AdBlock/youtube-<date>-<reason>.json.
 //
+// Since 2026-11-24 an ad that actually plays is a reason too (`ad-shown`): Fran saw ads that day with the rules unchanged
+// and a fresh profile clean, so the record has to say whether the server sent the ad (adPlacements/adSlots/playerAds in
+// the server's bytes, pruned or not in what the player holds), whether it is stitched into the stream (the playing video
+// id stays the content's; a client-side ad plays under its own id) and which experiment flags the account carries.
+//
 // It changes nothing on the page: no blocking, no hiding, no clicks.
 
 const RESPONSE_KEEP = 20;
 const EVENT_KEEP = 200;
 const LOG_KEEP = 300;
 const SAVE_MIN_GAP_MS = 60000;
-const SAVE_DELAY_MS = 3000; // after the popup appears, so the responses that came with it are in
+const SAVE_DELAY_MS = 3000; // after the popup or the ad appears, so the responses that came with it are in
+const AD_SAMPLE_MS = 1000;
+const AD_SHOWN_AFTER = 2; // consecutive samples with the ad UI before it counts as an ad shown (a flicker is not an ad)
+const FLAG_KEY = /ssap|sabr|enforcement|ad_?block|_ads?_|ads?$|ad_break|_dai_|preroll|midroll/i;
+const FLAG_KEEP = 120;
 const RECORD_MAX_BYTES = 1200000; // data URL through the service worker: Chrome's URL limit is 2 MB
 const FINDING_MAX_BYTES = 20000;
 const INTERESTING_URL = /youtubei\/v1\/(player|next|get_watch|reel\/reel_item_watch)/;
@@ -24,6 +33,10 @@ const POPUP_KEY = /^openPopupAction$/;
 const POPUP_TEXT = /enforcement|ad.?block/i;
 const POPUP_SELECTOR = 'ytd-enforcement-message-view-model, yt-upsell-dialog-renderer, ytd-popup-container tp-yt-paper-dialog[aria-modal="true"]';
 const ERROR_SELECTOR = 'yt-playability-error-supported-renderers#error-screen > *, #movie_player > .ytp-error';
+// the player's own ad UI (badge, "skip", preview countdown, the overlay of a video ad), as test/verify.mjs looks for it
+const AD_SELECTOR =
+  '.ytp-ad-player-overlay, .ytp-ad-player-overlay-layout, .ytp-ad-text, .ytp-ad-preview-container, .ytp-ad-skip-button-container, ' +
+  '.ytp-skip-ad-button, .ytp-ad-simple-ad-badge, .ytp-ad-badge__text, .ytp-ad-duration-remaining, .ytp-ad-persistent-progress-bar-container';
 
 export function installRecord(version) {
   if (window.__adblockYoutube) return window.__adblockYoutube;
@@ -91,6 +104,10 @@ export function installRecord(version) {
         adPlacements: player && Array.isArray(player.adPlacements) ? player.adPlacements.length : undefined,
         adSlots: player && Array.isArray(player.adSlots) ? player.adSlots.length : undefined,
         playerAds: player && Array.isArray(player.playerAds) ? player.playerAds.length : undefined,
+        // stitched (server-side) ads travel with these rather than with adPlacements
+        adBreakHeartbeatParams: player && player.adBreakHeartbeatParams ? true : undefined,
+        sabr: player && player.streamingData && player.streamingData.serverAbrStreamingUrl ? true : undefined,
+        formats: player && player.streamingData ? (player.streamingData.adaptiveFormats || []).length : undefined,
         auxiliaryUi: player && player.auxiliaryUi ? safeJson(player.auxiliaryUi).slice(0, 2000) : undefined,
         findings: findings(data),
       };
@@ -156,8 +173,12 @@ export function installRecord(version) {
       const v = document.querySelector('video');
       const r = (p && p.getPlayerResponse && p.getPlayerResponse()) || {};
       const q = v && v.getVideoPlaybackQuality ? v.getVideoPlaybackQuality() : null;
+      const vd = (p && p.getVideoData && p.getVideoData()) || null;
       return {
         videoId: r.videoDetails && r.videoDetails.videoId,
+        playingId: vd && vd.video_id, // a client-side ad plays under its own id; a stitched one keeps the content's
+        src: v && v.currentSrc ? v.currentSrc.replace(/^(blob:)?https?:\/\/([^/?]+).*$/, '$1$2') : null,
+        adUi: adUiVisible(),
         status: r.playabilityStatus && r.playabilityStatus.status,
         reason: r.playabilityStatus && r.playabilityStatus.reason,
         auxiliaryUi: r.auxiliaryUi ? Object.keys(r.auxiliaryUi.messageRenderers || r.auxiliaryUi) : undefined,
@@ -214,9 +235,61 @@ export function installRecord(version) {
     } catch {}
   }
 
+  // --- an ad that actually plays ---------------------------------------------------------------------------------
+
+  // the ad UI elements that are laid out right now, as "tag.class: text"
+  function adUiVisible() {
+    try {
+      const out = [];
+      for (const node of document.querySelectorAll(AD_SELECTOR)) {
+        if (!node.getClientRects().length) continue;
+        const text = (node.innerText || node.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 60);
+        out.push(node.tagName.toLowerCase() + '.' + String(node.className).split(/\s+/)[0] + (text ? ': ' + text : ''));
+        if (out.length >= 6) break;
+      }
+      return out;
+    } catch {
+      return [];
+    }
+  }
+
+  // the account's experiment flags that talk about ads, SSAP/SABR or enforcement (what the uBO maintainers ask for)
+  function experimentFlags() {
+    try {
+      const flags = (window.yt && yt.config_ && yt.config_.EXPERIMENT_FLAGS) || (window.ytcfg && ytcfg.data_ && ytcfg.data_.EXPERIMENT_FLAGS) || {};
+      const out = {};
+      let n = 0;
+      for (const key of Object.keys(flags)) {
+        if (!FLAG_KEY.test(key)) continue;
+        out[key] = flags[key];
+        if (++n >= FLAG_KEEP) break;
+      }
+      return out;
+    } catch {
+      return undefined;
+    }
+  }
+
+  let adRun = 0;
+  function sampleAd() {
+    try {
+      const p = document.getElementById('movie_player');
+      const showing = !!(p && (p.classList.contains('ad-showing') || p.classList.contains('ad-interrupting'))) || adUiVisible().length > 0;
+      if (!showing) {
+        if (adRun >= AD_SHOWN_AFTER) event('ad-ended', { seconds: adRun });
+        adRun = 0;
+        return;
+      }
+      if (++adRun !== AD_SHOWN_AFTER) return;
+      event('ad-shown', { flags: experimentFlags() });
+      scheduleSave('ad-shown');
+    } catch {}
+  }
+
   const start = () => {
     scan();
     new MutationObserver(scan).observe(document.documentElement, { childList: true, subtree: true });
+    setInterval(sampleAd, AD_SAMPLE_MS);
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
   else start();
@@ -239,6 +312,7 @@ export function installRecord(version) {
       loggedIn: !!(window.ytcfg && ytcfg.data_ && ytcfg.data_.LOGGED_IN),
       rules: { applied: state.applied, failed: state.failed },
       player: playerState(),
+      flags: experimentFlags(),
       events: state.events,
       responses: state.responses,
       log: state.log,

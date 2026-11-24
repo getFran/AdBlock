@@ -1,6 +1,6 @@
 ---
 name: pendientes
-description: Lo que quedó sin verificar o sin documentar al cerrar una sesión; se lee al abrir y se tacha al resolverse. Actualizado el 2026-11-21.
+description: Lo que quedó sin verificar o sin documentar al cerrar una sesión; se lee al abrir y se tacha al resolverse. Actualizado el 2026-11-24 (anuncios en YouTube en la cuenta de Fran, a la espera del registro ad-shown).
 metadata:
   type: project
 ---
@@ -13,7 +13,25 @@ extensión, forzar un registro), y la siguiente sesión tiene que saber qué que
 Al cerrarlo, quitarlo de aquí (si deja lección, va a su memoria o al `CLAUDE.md`) y commitear. Lo que Fran tiene que
 hacer él va marcado **(Fran)**.
 
-## Pendiente a 2026-11-21
+## Pendiente a 2026-11-24
+
+0c. **Anuncios en YouTube en la cuenta de Fran el 2026-11-24, sin registro que los explique.** Lo dijo esa tarde ("me han
+   salido anuncios en youtube hoy"). Lo que se descartó esa sesión: las reglas de YouTube del Base vivo de AdGuard no
+   habían cambiado desde el 23 (2.5.6.60 → .84 es solo el número; `npm run vendor` no trajo nada de YouTube), las reglas
+   de red (`/pagead/`, `/player/ad_break`) están en el `ruleset_2` de `dist/`, la extensión estaba activa en su Chrome
+   (Secure Preferences, sin `disable_reasons`), `disabledSites` era solo `["getfran.dev"]`, Chrome seguía en la 157 del
+   17, y `npm run verify -- youtube` salió limpio dos veces (sin cuenta: `adPlacements` ausente en dos vídeos, 32 reglas,
+   4/4 anti-popup). Ni AdGuard ni uBO tenían una oleada abierta (el hilo de uBO sin comentarios desde el 21; en el de
+   AdGuard #247932 entran quejas sueltas de YouTube desde el 23 sin diagnóstico). Así que es algo de la cuenta: ese día se
+   añadió al registro el motivo **`ad-shown`** (`src/youtube/record.js`: 2 s de `ad-showing` o de UI de anuncio en el
+   player; guarda `playingId` frente a `videoId`, la `src` del vídeo, la UI visible, `adBreakHeartbeatParams`/`sabr`/
+   `formats` de cada `/player` tal como llegó, y los experiment flags de ads/SSAP/SABR/enforcement). **(Fran)** recargar
+   la extensión en `chrome://extensions` (el `dist/` ya lleva el registro) y, cuando vuelva a ver un anuncio, decir la hora.
+   Se cierra leyendo `Descargas\AdBlock\youtube-<fecha>-ad-shown.json`: si el `/player` del servidor trae
+   `adPlacements`/`adSlots` y el player también → fallan las reglas (lo primero, `rules.failed` y si las 32 aplican); si
+   el servidor los trae y el player no, pero `playingId` cambia → anuncio client-side que la poda no cubre; si
+   `playingId` no cambia y el servidor no trae `adPlacements` → anuncio cosido en el stream (SSAP), que ninguna lista
+   quita hoy. Si lo que vio eran banners y no vídeo, el registro no salta: preguntarle qué vio.
 
 0. **(Fran) Recargar la extensión en `chrome://extensions`** con el `dist/` de la 1.0.8 (`npm run build` hecho el
    2026-11-21 con la numeración por `LIVE-SEQUENCE`; `npm test`, `npm run smoke` y `npm run probe` en verde). Una

@@ -137,9 +137,16 @@ alcance (carcasa que consume piezas mantenidas por otros), no con otro.
   perfil nuevo no se reproduce** (seis vídeos seguidos, cargas completas y SPA, sin popup ni pantalla de
   error), así que la evidencia es el registro: `src/youtube/record.js` guarda los últimos 20 `/player` y
   `/next` tal como los manda el servidor (claves, `playabilityStatus`, `auxiliaryUi`, y cualquier subárbol
-  cuya clave parezca enforcement) y, cuando aparece el popup o la pantalla de error, escribe
+  cuya clave parezca enforcement; desde el 2026-11-24 también `adBreakHeartbeatParams`, `sabr` y el número de
+  `formats`, que es como viaja un anuncio cosido en el stream) y, cuando aparece el popup o la pantalla de error, o
+  **desde el 2026-11-24 cuando el player lleva 2 s con `ad-showing` o con su UI de anuncio** (motivo `ad-shown`; Fran
+  vio anuncios ese día con las reglas sin cambiar y el `verify` limpio, así que la evidencia tenía que salir de su
+  cuenta: el registro lleva `playingId` frente a `videoId` (un anuncio client-side suena con su propio id, uno cosido
+  conserva el del vídeo), la `src` del vídeo, la UI visible y los experiment flags de ads/SSAP/SABR/enforcement), escribe
   **`Descargas\AdBlock\youtube-<fecha>-<motivo>.json`** por `bridge.js`. Flujo: Fran dice la hora; la
-  sesión lee el fichero. Aparte, el otro aviso de esta temporada, el **snackbar** "¿Tienes interrupciones?",
+  sesión lee el fichero. Cómo leer un `ad-shown`: servidor y player con `adPlacements` → fallan las reglas; servidor
+  sí y player no con `playingId` distinto → client-side sin podar; sin `adPlacements` y `playingId` igual → cosido
+  (SSAP), que ninguna lista quita. Aparte, el otro aviso de esta temporada, el **snackbar** "¿Tienes interrupciones?",
   lo tapaban dos reglas cosméticas de uBO (`quick-fixes.txt`, 2026-10-15) que el build cosmético toma del
   snapshot de uAssets (desde la foto del 2026-11-09 queda una, la de `#toast`: uBO comentó la de `.ytSnackbarContainerOpened`); el player no se bloquea porque la regla de AdGuard reescribe cada `/player`
   (`params=eAFgAQ`; comprobado con un hook de `TextEncoder.encode`, que es por donde sale el cuerpo:
@@ -188,7 +195,7 @@ build.mjs        lee build.config.mjs y escribe dist/:
   rulesets/      ruleset_<id>.json de AdGuard sin su regla de metadatos (el Base pesa 20 MB con ella)
   cosmetic/      runtime.js (selectores genéricos + runtime) y bucket-N.json (por dominio)
   youtube.js     MAIN world: 36 reglas compiladas (27 del Base de AdGuard, 5 de uAssets, 4 locales) y el registro
-                 (src/youtube/record.js: últimos /player y /next tal como llegan, popup y pantalla de error)
+                 (src/youtube/record.js: últimos /player y /next tal como llegan, popup, pantalla de error y anuncio reproducido)
   twitch.js      MAIN world: hook de Worker/fetch/XHR de la página con src/twitch/worker.js inlined (el bloqueo)
   bridge.js      ISOLATED (twitch.tv y YouTube), SOLO build de desarrollo: relé página -> service worker de los registros
   background.js  service worker: registra los content scripts (con los sitios desactivados excluidos), aplica las reglas

@@ -1,4 +1,4 @@
-! YouTube rules of the live AdGuard Base filter (version 2.5.6.60, updated 2026-11-23T17:07:44+00:00), vendored on 2026-11-23T18:21:06.146Z from https://filters.adtidy.org/extension/chromium-mv3/filters/2.txt
+! YouTube rules of the live AdGuard Base filter (version 2.5.6.84, updated 2026-11-24T17:07:38+00:00), vendored on 2026-11-24T18:20:12.273Z from https://filters.adtidy.org/extension/chromium-mv3/filters/2.txt
 ! Only the cosmetic and JS rules whose domains name a YouTube host; the build swaps them in for the npm package's (build.mjs overlayYoutube).
 ! Refresh with: npm run vendor
 youtube.com#@##player-ads
