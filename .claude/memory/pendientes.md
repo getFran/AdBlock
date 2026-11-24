@@ -44,6 +44,15 @@ hacer él va marcado **(Fran)**.
    saltaría ahí. Cómo se miró: `Secure Preferences` → `extensions.settings.<id>`, `Extension Scripts/*.log` (LevelDB,
    `grep -a`), y el `History` copiado a Temp (SQLite; con Python hay que darle la ruta Windows, `/tmp/...` crea una base
    vacía y da "no such table").
+   **Tercera vuelta: "fue en el PC del trabajo, que es un Ubuntu".** O sea, la copia de la release (zip cargado
+   descomprimido), no el `dist/` de aquí. El zip de la 1.0.11 bajado de GitHub pasa `smoke` (8 rulesets, 3 content
+   scripts, sin diagnóstico) y `ADBLOCK_DIST=<zip> npm run verify -- youtube` (opción añadida ese día): `adPlacements`
+   ausente en dos vídeos, sin UI de anuncio, 25 s reproduciendo. Así que la release vale y lo que falla en el trabajo es
+   la instalación: versión vieja (el badge `NEW` solo avisa, actualizar es bajar el zip, descomprimir encima y
+   recargar), extensión desactivada, o una política de Chrome de la empresa que bloquee extensiones sin empaquetar.
+   Pendiente de que Fran diga qué versión marca allí el popup. Se cierra cuando en el PC del trabajo esté la última
+   release y YouTube vuelva sin anuncios; si con la última sigue igual, es la política o el Chrome de allí, y la
+   prueba es `chrome://policy` y `chrome://extensions` (¿aparece y está activa?).
 
 0. **(Fran) Recargar la extensión en `chrome://extensions`** con el `dist/` de la 1.0.8 (`npm run build` hecho el
    2026-11-21 con la numeración por `LIVE-SEQUENCE`; `npm test`, `npm run smoke` y `npm run probe` en verde). Una

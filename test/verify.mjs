@@ -9,6 +9,9 @@
 // --keep-profile. Twitch: --twitch=<login>[,<login>...] watches each channel up to --seconds and stops after the first
 // complete stitched break; without --twitch the top live channel is used.
 // Every check prints what it saw; a check that saw no ad says so instead of passing.
+// ADBLOCK_DIST=<folder> verifies an extracted release zip instead of dist/ (since 2026-11-24, when Fran saw ads on
+// YouTube on the work PC, which runs the release): a release build has no diagnostics in the service worker and no
+// page globals, so the checks that need them say so and the evidence is what the page shows.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -16,7 +19,8 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const DIST = path.join(ROOT, 'dist');
+const DIST = process.env.ADBLOCK_DIST ? path.resolve(process.env.ADBLOCK_DIST) : path.join(ROOT, 'dist'); // e.g. an extracted release zip
+const RELEASE = !fs.existsSync(path.join(DIST, 'bridge.js')); // build.mjs --release ships no bridge.js
 const args = process.argv.slice(2);
 const which = args.find((a) => !a.startsWith('--')) || 'all';
 const opt = (name, def) => {
@@ -63,6 +67,11 @@ async function launch(profile) {
   if (!sw) sw = await context.waitForEvent('serviceworker', { timeout: 20000 }).catch(() => null);
   if (!sw) throw new Error('the extension service worker never started: is the extension loaded? (check --channel)');
   await sleep(500);
+  if (RELEASE) {
+    const manifest = JSON.parse(fs.readFileSync(path.join(DIST, 'manifest.json'), 'utf8'));
+    say(`extension ${manifest.version} (release build from ${DIST}) loaded in ${CHANNEL}: no diagnostics, the pages are the evidence`);
+    return { context, sw };
+  }
   const dnr = await sw.evaluate(() => globalThis.__adblock.report());
   say(`extension ${dnr.version} loaded in ${CHANNEL}: rulesets enabled = ${dnr.enabled.join(', ')}`);
   if (dnr.missing.length) say(`!! rulesets declared but NOT enabled: ${dnr.missing.join(', ')} (static rule limit?)`);
@@ -70,7 +79,7 @@ async function launch(profile) {
   return { context, sw };
 }
 
-const matchedSince = async (sw, since) => sw.evaluate((t) => globalThis.__adblock.matched.filter((m) => m.at >= t), since);
+const matchedSince = async (sw, since) => (RELEASE ? [] : sw.evaluate((t) => globalThis.__adblock.matched.filter((m) => m.at >= t), since));
 
 function watchBlocked(page) {
   const blocked = [];
@@ -139,6 +148,10 @@ async function testGeneric({ context, sw }) {
   // the Umami dashboard's own scripts. With getfran.dev switched off nothing on it may be blocked and no cosmetic
   // sheet injected (the content scripts are not registered for it, and a DNR allowAllRequests rule covers its frames).
   section('per-site switch: umami.getfran.dev');
+  if (RELEASE) {
+    say('  skipped: the switch is driven through the diagnostics of a development build');
+    return { blocked: blocked.length, matched: matched.length, switchOk: null, cosmeticFast, recalcMs };
+  }
   const before = await sw.evaluate(() => globalThis.__adblock.getDisabledSites());
   const probe = async (label) => {
     const p = await context.newPage();
@@ -228,7 +241,7 @@ async function testYoutube({ context, sw }) {
   });
   say(`ytInitialPlayerResponse: present=${inline.present} status=${inline.status} streamingData=${inline.streaming} adPlacements=${JSON.stringify(inline.adPlacements)} adSlots=${JSON.stringify(inline.adSlots)} playerAds=${JSON.stringify(inline.playerAds)}`);
   const applied = await page.evaluate(() => window.__adblockYoutube && { applied: window.__adblockYoutube.applied, failed: window.__adblockYoutube.failed });
-  say(`rules applied in MAIN world: ${applied ? applied.applied.length : 'NONE (script did not run)'}${applied && applied.failed.length ? ' | failed: ' + applied.failed.join(' | ') : ''}`);
+  say(`rules applied in MAIN world: ${applied ? applied.applied.length : RELEASE ? 'not listable (release build, no page global): the pruned responses below are the evidence' : 'NONE (script did not run)'}${applied && applied.failed.length ? ' | failed: ' + applied.failed.join(' | ') : ''}`);
   // the two halves of the defence against the "Ad blockers are not allowed on YouTube" popup: AdGuard's neutering of
   // the onAbnormalityDetected handler (the first raw JS rule of the Base, a Promise.then proxy) and our pruning of the
   // popup's payload (build.config.mjs youtube.local)
@@ -236,7 +249,8 @@ async function testYoutube({ context, sw }) {
   const abnormality = names.some((n) => /^js:\(\(\)=>\{const t=\{apply:\(t,o,n\)=>\{const e=n/.test(n));
   // the labels truncate each argument to 30 characters (build.mjs)
   const payload = ['json-prune(auxiliaryUi', 'json-prune-fetch-response(auxiliaryUi', 'json-prune-xhr-response(auxiliaryUi', 'set-constant(ytInitialPlayerResponse.auxili'].filter((p) => names.some((n) => n.startsWith(p)));
-  say(`anti-popup rules: onAbnormalityDetected neutered=${abnormality}${abnormality ? '' : ' !!'} | enforcement payload pruned by ${payload.length}/4 rules${payload.length === 4 ? '' : ' !!'}`);
+  if (RELEASE) say('anti-popup rules: not listable in a release build (the same compiled rules as the development build, verified there)');
+  else say(`anti-popup rules: onAbnormalityDetected neutered=${abnormality}${abnormality ? '' : ' !!'} | enforcement payload pruned by ${payload.length}/4 rules${payload.length === 4 ? '' : ' !!'}`);
   const playerAdsDisplay = await page.evaluate(() => {
     const e = document.getElementById('player-ads');
     return e ? getComputedStyle(e).display : 'absent';
@@ -302,7 +316,7 @@ async function testYoutube({ context, sw }) {
   const savedName = await page.evaluate(() => (window.__adblockYoutube && window.__adblockYoutube.save ? window.__adblockYoutube.save('verify') : null)).catch(() => null);
   await sleep(3000);
   const download = savedName ? await sw.evaluate((name) => globalThis.__adblock.downloadState(name), savedName).catch((e) => ({ error: e.message })) : null;
-  say(`record: ${savedName ? savedName + ' -> ' + JSON.stringify(download) : 'save() not available on the page !!'}`);
+  say(`record: ${savedName ? savedName + ' -> ' + JSON.stringify(download) : RELEASE ? 'none (a release build writes no records)' : 'save() not available on the page !!'}`);
   if (download && download.state === 'complete' && download.filename && fs.existsSync(download.filename)) {
     try {
       const r = JSON.parse(fs.readFileSync(download.filename, 'utf8'));
